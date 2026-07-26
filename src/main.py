@@ -10,7 +10,6 @@ import pathlib
 from http.cookies import SimpleCookie
 
 import aiohttp
-import rookiepy
 from tqdm.auto import tqdm
 
 
@@ -74,6 +73,50 @@ QUERY: typing.Dict[str, typing.Dict[str, typing.Any]] = {
 }
 """GraphQL query to fetch liked tweets."""
 
+DEFAULT_CONFIG_FILENAME = "config.json"
+"""Config filename to look for in the current directory."""
+
+CONFIG_KEYS = {"token", "cookies", "download", "path"}
+"""Keys allowed in the config file."""
+
+
+class ConfigError(Exception):
+    """Raised when the config file is missing, malformed or invalid."""
+
+
+def load_config(path: pathlib.Path) -> typing.Dict[str, typing.Any]:
+    """Load settings from a JSON config file.
+
+    :param path: The path to the config file.
+    :return: The settings from the config file.
+    :raises ConfigError: If the file does not exist, is not valid JSON
+        or contains an invalid value.
+    """
+    if not path.is_file():
+        raise ConfigError(f"Config file not found: {path}")
+
+    try:
+        config = json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as e:
+        raise ConfigError(f"Config file {path} contains invalid JSON: {e}") from e
+
+    if not isinstance(config, dict):
+        raise ConfigError(f"Config file {path} must contain a JSON object.")
+
+    if unknown_keys := sorted(set(config) - CONFIG_KEYS):
+        logger.warning(
+            f"Ignoring unknown config keys: {', '.join(unknown_keys)} "
+            f"(allowed keys: {', '.join(sorted(CONFIG_KEYS))})"
+        )
+
+    if "download" in config and not isinstance(config["download"], bool):
+        raise ConfigError(f"Config value 'download' must be true or false, got: {config['download']!r}")
+    for key in ("token", "cookies", "path"):
+        if key in config and config[key] is not None and not isinstance(config[key], str):
+            raise ConfigError(f"Config value '{key}' must be a string, got: {config[key]!r}")
+
+    return config
+
 
 def get_query(
     data: typing.Dict[str, typing.Dict[str, typing.Any]],
@@ -121,12 +164,24 @@ def find_values_by_key(data: typing.Dict[str, typing.Any], target_key: str) -> t
     return results
 
 
-def cookies_to_mapping(cookies: rookiepy.CookieList) -> typing.Mapping[str, typing.Any]:
-    """Convert rookiepy cookies to a mapping.
-    
-    :param cookies: The cookies to convert.
-    :return: The cookies as a mapping.
+def get_browser_cookies() -> typing.Mapping[str, typing.Any]:
+    """Load X cookies from browsers using rookiepy.
+
+    rookiepy is imported lazily so it is only required when cookies
+    are not provided explicitly.
+
+    :return: The browser cookies as a mapping.
     """
+    try:
+        import rookiepy
+    except ImportError:
+        logger.error(
+            "The 'rookiepy' package is required to read cookies from your browsers. "
+            "Install it or provide cookies via the config file / --cookies."
+        )
+        sys.exit(1)
+
+    cookies = rookiepy.load()
     return {cookie["name"]: cookie["value"] for cookie in cookies if cookie["domain"] == ".x.com"}
 
 
@@ -238,72 +293,108 @@ async def download_images(images: typing.List[str], path: pathlib.Path) -> None:
                     f.write(data)
 
 
-def dir_path(string: str) -> pathlib.Path:
-    """Check if a path is a directory.
-    
-    :param string: The path to check.
-    :return: The path if it is a directory.
-    """
-    if os.path.isdir(string):
-        return pathlib.Path(string)
-    else:
-        raise NotADirectoryError(string)
-
-
-def get_args() -> argparse.Namespace:
+def parse_args(argv: typing.Sequence[str] | None = None) -> argparse.Namespace:
     """Parse arguments.
-    
+
+    :param argv: The arguments to parse. Defaults to sys.argv.
     :return: The parsed arguments.
     """
     parser = argparse.ArgumentParser(
         description="A simple tool that allows you download all your liked photos from X (Twitter)."
     )
     parser.add_argument(
-        "--cookies", "-c", 
-        type=str, 
+        "--config",
+        type=str,
+        default=DEFAULT_CONFIG_FILENAME,
+        help=f"Path to a JSON config file. Defaults to '{DEFAULT_CONFIG_FILENAME}' "
+             "in the current directory if it exists."
+    )
+    parser.add_argument(
+        "--cookies", "-c",
+        type=str,
         help="Raw 'Cookie' header. If not passed, reads cookies from your browsers."
     )
     parser.add_argument(
-        "--token", 
-        type=str, 
-        required=True, 
+        "--token",
+        type=str,
         help="'x-csrf-token' copied from your browser network tab"
     )
     parser.add_argument(
-        "--download", 
-        action="store_true", 
-        default=False, 
+        "--download",
+        action="store_true",
+        default=None,
         help="Whether to download extracted images to your machine."
     )
     parser.add_argument(
-        "--path", 
-        type=dir_path, 
-        help="Location for the script output."
+        "--path",
+        type=str,
+        help="Location for the script output (both the data file and downloaded images)."
     )
-    try:
-        return parser.parse_args()
-    except NotADirectoryError:
-        parser.error("The path provided is not a directory.")
+    return parser.parse_args(argv)
+
+
+def resolve_settings(args: argparse.Namespace) -> typing.Dict[str, typing.Any]:
+    """Merge CLI arguments with the config file into effective settings.
+
+    CLI arguments take precedence over config file values.
+
+    :param args: The parsed CLI arguments.
+    :return: The effective settings with keys: cookies, token, download, path.
+    """
+    config_path = pathlib.Path(args.config).expanduser()
+    config_exists = config_path.is_file()
+    if args.config != DEFAULT_CONFIG_FILENAME and not config_exists:
+        logger.error(f"Config file not found: {config_path}")
+        sys.exit(1)
+
+    config: typing.Dict[str, typing.Any] = {}
+    if config_exists:
+        try:
+            config = load_config(config_path)
+        except ConfigError as e:
+            logger.error(str(e))
+            sys.exit(1)
+        logger.info(f"Loaded config from {config_path}")
+
+    def pick(cli_value: typing.Any, key: str, default: typing.Any = None) -> typing.Any:
+        return cli_value if cli_value is not None else config.get(key, default)
+
+    download = pick(args.download, "download", False)
+    path = pathlib.Path(pick(args.path, "path", os.curdir)).expanduser()
+    if not path.is_dir():
+        logger.error(f"The output path is not a directory: {path}")
+        sys.exit(1)
+
+    token = pick(args.token, "token")
+    if not token:
+        logger.error(
+            "Missing 'x-csrf-token'. Provide it via --token or the 'token' key "
+            f"in {DEFAULT_CONFIG_FILENAME}."
+        )
+        sys.exit(1)
+
+    raw_cookies = pick(args.cookies, "cookies")
+    cookies = parse_cookies(raw_cookies) if raw_cookies else get_browser_cookies()
+    if missing_cookies := check_cookies(cookies):
+        logger.error(f"The following required cookies are missing: {', '.join(missing_cookies)}")
+        sys.exit(1)
+
+    return {"cookies": cookies, "token": token, "download": download, "path": path}
 
 
 async def main() -> None:
     """Entry point."""
-    args = get_args()
-    cookies = parse_cookies(args.cookies) if args.cookies else cookies_to_mapping(rookiepy.load())
-    path = args.path or pathlib.Path.cwd()
-    
-    if missing_cookies := check_cookies(cookies):
-        logger.error(f"The following required cookies are missing: {", ".join(missing_cookies)}")
-        sys.exit(1)
+    args = parse_args()
+    settings = resolve_settings(args)
 
     progress = tqdm(desc="Fetching images", unit="")
-    images = await collect_images_urls(cookies, args.token, progress=progress)
+    images = await collect_images_urls(settings["cookies"], settings["token"], progress=progress)
     progress.close()
 
-    save_to_file(images, path)
+    save_to_file(images, settings["path"])
 
-    if args.download:
-        await download_images(images, path)
+    if settings["download"]:
+        await download_images(images, settings["path"])
 
     logger.info("Report success")
 

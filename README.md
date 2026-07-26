@@ -14,6 +14,39 @@
 > [!WARNING]  
 > If you are logged in in multiple browsers with different accounts, you might get a 403 error because of cookies mismatch. In this case, you should provide the cookies manually, as shown [below](#cookies).
 
+### Config file (recommended)
+
+Instead of passing everything on the command line, the tool reads a `config.json` file from the current directory. Copy `config.example.json` to `config.json` and fill in your values:
+
+```json
+{
+  "token": "paste-your-x-csrf-token-here",
+  "cookies": "",
+  "download": false,
+  "path": "."
+}
+```
+
+| Key | Description |
+| --- | --- |
+| `token` | **Required.** The `X-Csrf-Token` value (see steps below). |
+| `cookies` | Optional. Raw `Cookie` header. Leave empty to extract cookies from your browsers automatically. |
+| `download` | Optional. Set to `true` to also download the photos. Defaults to `false`. |
+| `path` | Optional. Output directory for `data.json` and downloaded images. Defaults to the current directory. |
+
+Then simply run:
+
+```bash
+x-liked-photos-export-x64.exe
+```
+
+A different config file can be selected with `--config path/to/config.json`. Any command line argument you pass overrides the corresponding value from the config file.
+
+> [!NOTE]
+> `config.json` contains your credentials, so it is excluded from git via `.gitignore`. Only `config.example.json` is committed.
+
+### Command line
+
 1. Download prebuilt binary from [here](https://github.com/jokelbaf/x-liked-photos-export/releases/latest).
 2. Go to [x.com](https://x.com) and authorize.
 3. Open devtools via `F12` and go to `Network` tab.
