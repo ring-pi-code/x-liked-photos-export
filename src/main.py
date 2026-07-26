@@ -17,11 +17,19 @@ from tqdm.auto import tqdm
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(name)s] [%(levelname)s]: %(message)s")
 
-URL = "https://x.com/i/api/graphql/U1iuEM9U-e3QXOIkqOFAyw/Likes?"
+URL = "https://x.com/i/api/graphql/4X8QeWbeJ0jwGHaXSxExRw/Likes?"
 """The URL to fetch data from."""
 
 HEADERS: typing.Mapping[str, str] = {
     "authorization": "Bearer AAAAAAAAAAAAAAAAAAAAANRILgAAAAAAnNwIzUejRCOuH5E6I8xnZz4puTs%3D1Zv7ttfk8LF81IUq16cHjhLTvJu4FA33AGWWjCpTnA",
+    "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36",
+    "Accept": "*/*",
+    "Accept-Language": "en-US,en;q=0.9",
+    "Referer": "https://x.com/",
+    "Origin": "https://x.com",
+    "X-Twitter-Auth-Type": "OAuth2Session",
+    "X-Twitter-Active-User": "yes",
+    "X-Twitter-Client-Language": "en",
 }
 """Default headers appliable to all requests."""
 

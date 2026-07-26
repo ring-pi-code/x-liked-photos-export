@@ -6,6 +6,9 @@
 
 <p align="center">A simple tool that allows you download all your liked photos from X (Twitter).</p>
 
+> [!NOTE]
+> This is a fork of [jokelbaf/x-liked-photos-export](https://github.com/jokelbaf/x-liked-photos-export) with a working Likes endpoint fix (X rotated the GraphQL query ID) plus a few personal additions. Original author: [@jokelbaf](https://github.com/jokelbaf). See the [upstream repo](https://github.com/jokelbaf/x-liked-photos-export) for the original README and releases.
+
 ## Usage
 
 > [!WARNING]  
