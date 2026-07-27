@@ -5,6 +5,6 @@
   "download": false,
   "mode": "likes",
   "path": ".",
-  "likes_query_id": "",
-  "bookmarks_query_id": ""
+  "likes_query_id": "paste-likes-query-id-here",
+  "bookmarks_query_id": "paste-bookmarks-query-id-here"
 }

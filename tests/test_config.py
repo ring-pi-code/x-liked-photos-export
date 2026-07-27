@@ -21,6 +21,8 @@ VALID_CONFIG = {
     "ct0": "test-ct0",
     "auth_token": "test-auth-token",
     "twid": "u=123456",
+    "likes_query_id": "test-likes-id",
+    "bookmarks_query_id": "test-bookmarks-id",
 }
 
 
@@ -99,6 +101,7 @@ class ResolveSettingsTest(unittest.TestCase):
             "ct0": "test-ct0",
             "auth_token": "test-auth-token",
             "mode": "bookmarks",
+            "bookmarks_query_id": "test-bookmarks-id",
         })
 
         with chdir(self.dir):
@@ -117,21 +120,31 @@ class ResolveSettingsTest(unittest.TestCase):
         self.assertEqual(settings["mode"], "bookmarks")
         self.assertEqual(settings["path"], pathlib.Path("bookmarks"))
 
-    def test_query_id_defaults_and_overrides(self):
-        write_config(self.dir, {**VALID_CONFIG, "likes_query_id": "custom-likes-id"})
+    def test_query_id_comes_from_config(self):
+        with chdir(self.dir):
+            write_config(self.dir, VALID_CONFIG)
+            settings = self.resolve([])
+
+        self.assertEqual(settings["query_id"], "test-likes-id")
+
+    def test_bookmarks_query_id_used_in_bookmarks_mode(self):
+        write_config(self.dir, {**VALID_CONFIG, "mode": "bookmarks"})
 
         with chdir(self.dir):
             settings = self.resolve([])
 
-        self.assertEqual(settings["query_id"], "custom-likes-id")
+        self.assertEqual(settings["query_id"], "test-bookmarks-id")
 
-    def test_query_id_falls_back_to_builtin_default(self):
-        write_config(self.dir, VALID_CONFIG)
+    def test_missing_query_id_errors(self):
+        config = {k: v for k, v in VALID_CONFIG.items() if not k.endswith("_query_id")}
+        write_config(self.dir, config)
 
-        with chdir(self.dir):
-            settings = self.resolve([])
+        with chdir(self.dir), \
+                self.assertRaises(SystemExit), \
+                self.assertLogs(level=logging.ERROR) as logs:
+            self.resolve([])
 
-        self.assertEqual(settings["query_id"], main.DEFAULT_QUERY_IDS["likes"])
+        self.assertIn("'likes_query_id'", "".join(logs.output))
 
     def test_explicit_config_path_via_flag(self):
         config_dir = pathlib.Path(self.dir) / "elsewhere"

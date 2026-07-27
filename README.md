@@ -29,8 +29,8 @@ Copy `config.example.json` to `config.json` and fill in your values:
   "download": false,
   "mode": "likes",
   "path": ".",
-  "likes_query_id": "",
-  "bookmarks_query_id": ""
+  "likes_query_id": "paste-likes-query-id-here",
+  "bookmarks_query_id": "paste-bookmarks-query-id-here"
 }
 ```
 
@@ -42,7 +42,7 @@ Copy `config.example.json` to `config.json` and fill in your values:
 | `download` | Optional. Set to `true` to also download the photos. Defaults to `false`. |
 | `mode` | Optional. `likes` or `bookmarks`. Defaults to `likes`. |
 | `path` | Optional. Output directory for `data.json` and downloaded images. Defaults to the current directory. |
-| `likes_query_id` / `bookmarks_query_id` | Optional. GraphQL query ID overrides. X rotates these; copy the current ID from your browser's network tab if requests start failing with 404. |
+| `likes_query_id` / `bookmarks_query_id` | **Required.** The GraphQL query IDs for the Likes and Bookmarks endpoints (see [Query IDs](#query-ids)). |
 
 > [!NOTE]
 > `config.json` contains your credentials, so it is excluded from git via `.gitignore`. Only `config.example.json` is committed.
@@ -75,6 +75,22 @@ The tool needs two or three cookies from your browser to call the X API on your 
    - `ct0` — the CSRF token. This is the same value as the `X-Csrf-Token` header you see in the `Network` tab, so you can copy it from either place.
    - `auth_token` — your login session.
    - `twid` — contains your user ID. Only needed in `likes` mode.
+
+## Query IDs
+
+X calls its API through GraphQL, and each operation has its own query ID in the request URL. X rotates these IDs every few months, so the tool reads them from `config.json` instead of hardcoding them. To find the current IDs:
+
+1. Go to [x.com](https://x.com) and authorize.
+2. Open devtools via `F12` and go to the `Network` tab.
+3. Open your [likes page](https://x.com/i/likes) in the browser tab.
+4. Type `Likes` in the network filter box. You are looking for a request URL like:
+   ```
+   https://x.com/i/api/graphql/4X8QeWbeJ0jwGHaXSxExRw/Likes?variables=...
+   ```
+5. Copy the ID between `/graphql/` and `/Likes` into `likes_query_id`.
+6. Repeat on your [bookmarks page](https://x.com/i/bookmarks), filtering for `Bookmarks`, and copy that ID into `bookmarks_query_id`.
+
+If a request suddenly starts failing with 404, X has rotated the ID. Repeat the steps above and update `config.json`.
 
 ## Running the tests
 

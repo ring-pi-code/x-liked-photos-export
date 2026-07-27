@@ -15,14 +15,6 @@ from tqdm.auto import tqdm
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(name)s] [%(levelname)s]: %(message)s")
 
-DEFAULT_QUERY_IDS: typing.Mapping[str, str] = {
-    "likes": "4X8QeWbeJ0jwGHaXSxExRw",
-    "bookmarks": "6MQ4c6ZObu34HwbVAKNR8A",
-}
-"""Built-in GraphQL query IDs per mode. X rotates these periodically; if a
-request starts failing with 404, copy the current ID from your browser's
-network tab and set it via the 'query_ids' config option."""
-
 URL_TEMPLATES: typing.Mapping[str, str] = {
     mode: f"https://x.com/i/api/graphql/{{query_id}}/{endpoint}?"
     for mode, endpoint in (("likes", "Likes"), ("bookmarks", "Bookmarks"))
@@ -380,8 +372,6 @@ def resolve_settings(args: argparse.Namespace) -> typing.Dict[str, typing.Any]:
     bookmarks = pick(args.bookmarks, "bookmarks", None)
     mode = "bookmarks" if bookmarks else pick(None, "mode", "likes")
 
-    query_id = config.get(f"{mode}_query_id") or DEFAULT_QUERY_IDS[mode]
-
     download = pick(args.download, "download", False)
     base_path = pathlib.Path(pick(args.path, "path", os.curdir)).expanduser()
     if not base_path.is_dir():
@@ -415,6 +405,16 @@ def resolve_settings(args: argparse.Namespace) -> typing.Dict[str, typing.Any]:
         sys.exit(1)
 
     cookies = {"auth_token": auth_token, "ct0": ct0, **({"twid": twid} if twid else {})}
+
+    query_id_key = f"{mode}_query_id"
+    query_id = config.get(query_id_key)
+    if not query_id:
+        logger.error(
+            f"Missing '{query_id_key}'. Copy the current {mode.capitalize()} query ID "
+            f"from your browser's network tab into the '{query_id_key}' key "
+            f"of {DEFAULT_CONFIG_FILENAME} (see README)."
+        )
+        sys.exit(1)
 
     return {
         "cookies": cookies,
