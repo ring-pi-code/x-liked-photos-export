@@ -209,27 +209,6 @@ def find_values_by_key(data: typing.Dict[str, typing.Any], target_key: str) -> t
     return results
 
 
-def get_browser_cookies() -> typing.Mapping[str, typing.Any]:
-    """Load X cookies from browsers using rookiepy.
-
-    rookiepy is imported lazily so it is only required when cookies
-    are not provided explicitly.
-
-    :return: The browser cookies as a mapping.
-    """
-    try:
-        import rookiepy
-    except ImportError:
-        logger.error(
-            "The 'rookiepy' package is required to read cookies from your browsers. "
-            "Install it or provide cookies via the config file / --cookies."
-        )
-        sys.exit(1)
-
-    cookies = rookiepy.load()
-    return {cookie["name"]: cookie["value"] for cookie in cookies if cookie["domain"] == ".x.com"}
-
-
 def parse_cookies(cookies: str) -> typing.Mapping[str, typing.Any]:
     """Parse cookies from raw string to dict.
     
@@ -363,7 +342,7 @@ def parse_args(argv: typing.Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--cookies", "-c",
         type=str,
-        help="Raw 'Cookie' header. If not passed, reads cookies from your browsers."
+        help="Raw 'Cookie' header copied from your browser devtools."
     )
     parser.add_argument(
         "--token",
@@ -439,7 +418,13 @@ def resolve_settings(args: argparse.Namespace) -> typing.Dict[str, typing.Any]:
         sys.exit(1)
 
     raw_cookies = pick(args.cookies, "cookies")
-    cookies = parse_cookies(raw_cookies) if raw_cookies else get_browser_cookies()
+    if not raw_cookies:
+        logger.error(
+            "Missing cookies. Copy the raw 'Cookie' header from your browser devtools "
+            f"into the 'cookies' key of {DEFAULT_CONFIG_FILENAME} (see README)."
+        )
+        sys.exit(1)
+    cookies = parse_cookies(raw_cookies)
     if missing_cookies := check_cookies(cookies):
         logger.error(f"The following required cookies are missing: {', '.join(missing_cookies)}")
         sys.exit(1)

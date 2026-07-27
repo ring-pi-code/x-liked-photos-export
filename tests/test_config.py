@@ -82,26 +82,25 @@ class ResolveSettingsTest(unittest.TestCase):
         self.assertTrue(settings["download"])
 
     def test_defaults_when_config_minimal(self):
-        write_config(self.dir, {"token": "test-token"})
+        write_config(self.dir, {"token": "test-token", "cookies": VALID_COOKIES})
 
-        with chdir(self.dir), \
-                mock.patch.object(main, "get_browser_cookies",
-                                  return_value={"auth_token": "a", "ct0": "b", "twid": "c"}) as m:
+        with chdir(self.dir):
             settings = self.resolve([])
 
-        m.assert_called_once()
         self.assertFalse(settings["download"])
         self.assertEqual(settings["path"], pathlib.Path("likes"))
 
-    def test_empty_cookies_string_falls_back_to_browser(self):
-        write_config(self.dir, {"token": "test-token", "cookies": ""})
+    def test_missing_cookies_errors(self):
+        write_config(self.dir, {"token": "test-token"})
 
         with chdir(self.dir), \
-                mock.patch.object(main, "get_browser_cookies",
-                                  return_value={"auth_token": "a", "ct0": "b", "twid": "c"}) as m:
+                self.assertRaises(SystemExit), \
+                self.assertLogs(level=logging.ERROR) as logs:
             self.resolve([])
 
-        m.assert_called_once()
+        output = "".join(logs.output)
+        self.assertIn("Missing cookies", output)
+        self.assertIn("'cookies'", output)
 
     def test_explicit_config_path_via_flag(self):
         config_dir = pathlib.Path(self.dir) / "elsewhere"

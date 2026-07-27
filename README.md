@@ -11,9 +11,6 @@
 
 ## Usage
 
-> [!WARNING]  
-> If you are logged in in multiple browsers with different accounts, you might get a 403 error because of cookies mismatch. In this case, you should provide the cookies manually, as shown [below](#cookies).
-
 ### Config file (recommended)
 
 Instead of passing everything on the command line, the tool reads a `config.json` file from the current directory. Copy `config.example.json` to `config.json` and fill in your values:
@@ -30,7 +27,7 @@ Instead of passing everything on the command line, the tool reads a `config.json
 | Key | Description |
 | --- | --- |
 | `token` | **Required.** The `X-Csrf-Token` value (see steps below). |
-| `cookies` | Optional. Raw `Cookie` header. Leave empty to extract cookies from your browsers automatically. |
+| `cookies` | **Required.** Raw `Cookie` header copied from your browser devtools (see [Cookies](#cookies)). |
 | `download` | Optional. Set to `true` to also download the photos. Defaults to `false`. |
 | `path` | Optional. Output directory for `data.json` and downloaded images. Defaults to the current directory. |
 
@@ -69,7 +66,14 @@ x-liked-photos-export-x64.exe --token <token> --download
 
 ## Cookies
 
-By default the tool will extract the cookies from your browser to perform requests to the API on your behalf. If you want to provide the cookies manually, you can do so by using the `--cookies` flag:
+The tool needs your X cookies to call the API on your behalf. To get them:
+
+1. Go to [x.com](https://x.com) and authorize.
+2. Open devtools via `F12` and go to the `Network` tab.
+3. Select any request to `x.com/i/api/...`.
+4. Copy the full `Cookie` request header value.
+
+Provide it via the `cookies` key in `config.json`, or with the `--cookies` flag:
 
 ```bash
 x-liked-photos-export-x64.exe --cookies <cookies> --token <token>
