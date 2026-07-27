@@ -1,8 +1,5 @@
 .venv/
 data/
-dist/
-build/
 __pycache__/
-*.spec
 *.json
 !config.example.json
