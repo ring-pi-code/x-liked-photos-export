@@ -7,7 +7,6 @@ import json
 import yarl
 import os
 import pathlib
-from http.cookies import SimpleCookie
 
 import aiohttp
 from tqdm.auto import tqdm
@@ -109,7 +108,10 @@ Bookmarks are always the authenticated user's, so no userId is sent."""
 DEFAULT_CONFIG_FILENAME = "config.json"
 """Config filename to look for in the current directory."""
 
-CONFIG_KEYS = {"token", "cookies", "download", "mode", "path", "query_ids"}
+CONFIG_KEYS = {
+    "ct0", "auth_token", "twid", "download", "mode", "path",
+    "likes_query_id", "bookmarks_query_id",
+}
 """Keys allowed in the config file."""
 
 
@@ -144,17 +146,11 @@ def load_config(path: pathlib.Path) -> typing.Dict[str, typing.Any]:
 
     if "download" in config and not isinstance(config["download"], bool):
         raise ConfigError(f"Config value 'download' must be true or false, got: {config['download']!r}")
-    for key in ("token", "cookies", "mode", "path"):
+    for key in ("ct0", "auth_token", "twid", "mode", "path", "likes_query_id", "bookmarks_query_id"):
         if key in config and config[key] is not None and not isinstance(config[key], str):
             raise ConfigError(f"Config value '{key}' must be a string, got: {config[key]!r}")
     if "mode" in config and config["mode"] not in MODES:
         raise ConfigError(f"Config value 'mode' must be one of: {', '.join(sorted(MODES))}")
-    if "query_ids" in config and config["query_ids"] is not None:
-        query_ids = config["query_ids"]
-        if not isinstance(query_ids, dict) or not all(
-            isinstance(k, str) and isinstance(v, str) for k, v in query_ids.items()
-        ):
-            raise ConfigError("Config value 'query_ids' must be an object with string values.")
 
     return config
 
@@ -209,27 +205,6 @@ def find_values_by_key(data: typing.Dict[str, typing.Any], target_key: str) -> t
     return results
 
 
-def parse_cookies(cookies: str) -> typing.Mapping[str, typing.Any]:
-    """Parse cookies from raw string to dict.
-    
-    :param cookies: The cookies to parse.
-    :return: Parsed cookies.
-    """
-    cookie = SimpleCookie()
-    cookie.load(cookies)
-    return {k: v.value for k, v in cookie.items()}
-
-
-def check_cookies(cookies: typing.Mapping[str, str]) -> typing.List[str]:
-    """Check if cookies are valid.
-    
-    :param cookies: The cookies to check.
-    :return: A list of missing cookies.
-    """
-    required_cookies = ["auth_token", "ct0", "twid"]
-    return [cookie for cookie in required_cookies if cookie not in cookies]
-
-
 def get_bottom_cursor(data: typing.Dict[str, typing.Any]) -> str | None:
     """Get the bottom cursor.
     
@@ -254,7 +229,7 @@ def get_bottom_cursor(data: typing.Dict[str, typing.Any]) -> str | None:
 
 async def collect_images_urls(
     cookies: typing.Mapping[str, str],
-    token: str,
+    ct0: str,
     *,
     mode: str,
     query_id: str,
@@ -264,18 +239,19 @@ async def collect_images_urls(
     """Collect images URLs.
     
     :param cookies: The cookies to use.
-    :param token: The token to use.
+    :param ct0: The CSRF token (same value as the 'x-csrf-token' header).
     :param mode: The export mode ('likes' or 'bookmarks').
     :param query_id: The GraphQL query ID for the mode's endpoint.
     :return: The images URLs.
     """
     mode_config = MODES[mode]
-    user_id = cookies["twid"][4:] if mode_config["needs_user_id"] else None
+    twid = cookies.get("twid", "")
+    user_id = twid.removeprefix("u%3D").removeprefix("u=") if mode_config["needs_user_id"] else None
     query = get_query(mode_config["query"], user_id=user_id, cursor=cursor)
     url = yarl.URL(URL_TEMPLATES[mode].format(query_id=query_id)).with_query(query)
     async with (
         aiohttp.ClientSession(
-            headers={**HEADERS, "x-csrf-token": token},
+            headers={**HEADERS, "x-csrf-token": ct0},
             cookies=cookies,
         ) as session,
         session.get(url) as response
@@ -292,7 +268,7 @@ async def collect_images_urls(
 
         if (cursor := get_bottom_cursor(data)) and len(images) != 0:
             more_images = await collect_images_urls(
-                cookies, token, mode=mode, query_id=query_id, cursor=cursor, progress=progress
+                cookies, ct0, mode=mode, query_id=query_id, cursor=cursor, progress=progress
             )
             images = images + more_images
 
@@ -340,14 +316,19 @@ def parse_args(argv: typing.Sequence[str] | None = None) -> argparse.Namespace:
              "in the current directory if it exists."
     )
     parser.add_argument(
-        "--cookies", "-c",
+        "--ct0",
         type=str,
-        help="Raw 'Cookie' header copied from your browser devtools."
+        help="The 'ct0' cookie. Same value as the 'x-csrf-token' header in your browser network tab."
     )
     parser.add_argument(
-        "--token",
+        "--auth-token",
         type=str,
-        help="'x-csrf-token' copied from your browser network tab"
+        help="The 'auth_token' cookie from your browser."
+    )
+    parser.add_argument(
+        "--twid",
+        type=str,
+        help="The 'twid' cookie from your browser. Only needed in likes mode."
     )
     parser.add_argument(
         "--download",
@@ -375,7 +356,7 @@ def resolve_settings(args: argparse.Namespace) -> typing.Dict[str, typing.Any]:
     CLI arguments take precedence over config file values.
 
     :param args: The parsed CLI arguments.
-    :return: The effective settings with keys: cookies, token, download, path,
+    :return: The effective settings with keys: cookies, ct0, download, path,
         mode, query_id.
     """
     config_path = pathlib.Path(args.config).expanduser()
@@ -399,7 +380,7 @@ def resolve_settings(args: argparse.Namespace) -> typing.Dict[str, typing.Any]:
     bookmarks = pick(args.bookmarks, "bookmarks", None)
     mode = "bookmarks" if bookmarks else pick(None, "mode", "likes")
 
-    query_id = (config.get("query_ids") or {}).get(mode) or DEFAULT_QUERY_IDS[mode]
+    query_id = config.get(f"{mode}_query_id") or DEFAULT_QUERY_IDS[mode]
 
     download = pick(args.download, "download", False)
     base_path = pathlib.Path(pick(args.path, "path", os.curdir)).expanduser()
@@ -409,29 +390,35 @@ def resolve_settings(args: argparse.Namespace) -> typing.Dict[str, typing.Any]:
     path = base_path / mode
     path.mkdir(parents=True, exist_ok=True)
 
-    token = pick(args.token, "token")
-    if not token:
+    ct0 = pick(args.ct0, "ct0")
+    if not ct0:
         logger.error(
-            "Missing 'x-csrf-token'. Provide it via --token or the 'token' key "
-            f"in {DEFAULT_CONFIG_FILENAME}."
+            "Missing 'ct0'. Copy the 'ct0' cookie (same value as the 'x-csrf-token' header) "
+            f"from your browser into the 'ct0' key of {DEFAULT_CONFIG_FILENAME} (see README)."
         )
         sys.exit(1)
 
-    raw_cookies = pick(args.cookies, "cookies")
-    if not raw_cookies:
+    auth_token = pick(args.auth_token, "auth_token")
+    if not auth_token:
         logger.error(
-            "Missing cookies. Copy the raw 'Cookie' header from your browser devtools "
-            f"into the 'cookies' key of {DEFAULT_CONFIG_FILENAME} (see README)."
+            "Missing 'auth_token'. Copy the 'auth_token' cookie from your browser "
+            f"into the 'auth_token' key of {DEFAULT_CONFIG_FILENAME} (see README)."
         )
         sys.exit(1)
-    cookies = parse_cookies(raw_cookies)
-    if missing_cookies := check_cookies(cookies):
-        logger.error(f"The following required cookies are missing: {', '.join(missing_cookies)}")
+
+    twid = pick(args.twid, "twid", "")
+    if mode == "likes" and not twid:
+        logger.error(
+            "Missing 'twid'. Likes mode needs your user ID, which is taken from the 'twid' "
+            f"cookie. Copy it into the 'twid' key of {DEFAULT_CONFIG_FILENAME} (see README)."
+        )
         sys.exit(1)
+
+    cookies = {"auth_token": auth_token, "ct0": ct0, **({"twid": twid} if twid else {})}
 
     return {
         "cookies": cookies,
-        "token": token,
+        "ct0": ct0,
         "download": download,
         "path": path,
         "mode": mode,
@@ -449,7 +436,7 @@ async def main() -> None:
     progress = tqdm(desc="Fetching images", unit="")
     images = await collect_images_urls(
         settings["cookies"],
-        settings["token"],
+        settings["ct0"],
         mode=settings["mode"],
         query_id=settings["query_id"],
         progress=progress,

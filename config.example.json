@@ -1,11 +1,10 @@
 {
-  "token": "paste-your-x-csrf-token-here",
-  "cookies": "",
+  "ct0": "paste-ct0-cookie-here",
+  "auth_token": "paste-auth_token-cookie-here",
+  "twid": "",
   "download": false,
   "mode": "likes",
   "path": ".",
-  "query_ids": {
-    "likes": "",
-    "bookmarks": ""
-  }
+  "likes_query_id": "",
+  "bookmarks_query_id": ""
 }

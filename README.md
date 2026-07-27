@@ -17,19 +17,26 @@ Instead of passing everything on the command line, the tool reads a `config.json
 
 ```json
 {
-  "token": "paste-your-x-csrf-token-here",
-  "cookies": "",
+  "ct0": "paste-ct0-cookie-here",
+  "auth_token": "paste-auth_token-cookie-here",
+  "twid": "",
   "download": false,
-  "path": "."
+  "mode": "likes",
+  "path": ".",
+  "likes_query_id": "",
+  "bookmarks_query_id": ""
 }
 ```
 
 | Key | Description |
 | --- | --- |
-| `token` | **Required.** The `X-Csrf-Token` value (see steps below). |
-| `cookies` | **Required.** Raw `Cookie` header copied from your browser devtools (see [Cookies](#cookies)). |
+| `ct0` | **Required.** The `ct0` cookie. Same value as the `X-Csrf-Token` header (see [Cookies](#cookies)). |
+| `auth_token` | **Required.** The `auth_token` cookie (see [Cookies](#cookies)). |
+| `twid` | The `twid` cookie. Required in `likes` mode only (see [Cookies](#cookies)). |
 | `download` | Optional. Set to `true` to also download the photos. Defaults to `false`. |
+| `mode` | Optional. `likes` or `bookmarks`. Defaults to `likes`. |
 | `path` | Optional. Output directory for `data.json` and downloaded images. Defaults to the current directory. |
+| `likes_query_id` / `bookmarks_query_id` | Optional. GraphQL query ID overrides. X rotates these; copy the current ID from your browser's network tab if requests start failing with 404. |
 
 Then simply run:
 
@@ -45,45 +52,39 @@ A different config file can be selected with `--config path/to/config.json`. Any
 ### Command line
 
 1. Download prebuilt binary from [here](https://github.com/jokelbaf/x-liked-photos-export/releases/latest).
-2. Go to [x.com](https://x.com) and authorize.
-3. Open devtools via `F12` and go to `Network` tab.
-4. Copy the `X-Csrf-Token` header value from any request.
-5. Go to the folder where you downloaded the binary, open terminal and run the following command:
+2. Copy the `ct0`, `auth_token` and `twid` cookies from your browser (see [Cookies](#cookies)).
+3. Go to the folder where you downloaded the binary, open terminal and run the following command:
 
 ```bash
-x-liked-photos-export-x64.exe --token <token>
+x-liked-photos-export-x64.exe --ct0 <ct0> --auth-token <auth_token> --twid <twid>
 ```
 
 This will fetch all posts you liked and generate a **data.json** file with links to the photos.
+
+To export your bookmarks instead, add `--bookmarks` (`twid` is not needed there):
+
+```bash
+x-liked-photos-export-x64.exe --ct0 <ct0> --auth-token <auth_token> --bookmarks
+```
 
 ## Downloading photos
 
 In case you want to download the photos, add `--download` flag:
 
 ```bash
-x-liked-photos-export-x64.exe --token <token> --download
+x-liked-photos-export-x64.exe --ct0 <ct0> --auth-token <auth_token> --twid <twid> --download
 ```
 
 ## Cookies
 
-The tool needs your X cookies to call the API on your behalf. To get them:
+The tool needs two or three cookies from your browser to call the X API on your behalf. To get them:
 
 1. Go to [x.com](https://x.com) and authorize.
-2. Open devtools via `F12` and go to the `Network` tab.
-3. Select any request to `x.com/i/api/...`.
-4. Copy the full `Cookie` request header value.
-
-Provide it via the `cookies` key in `config.json`, or with the `--cookies` flag:
-
-```bash
-x-liked-photos-export-x64.exe --cookies <cookies> --token <token>
-```
-
-> [!NOTE]  
-> Cookies must be in raw unparsed format, copied from the `Cookie` header. Similar to this:
-> ```
-> cookie1=value1; cookie2=value2; ...
-> ```
+2. Open devtools via `F12` and go to `Application` > `Cookies` > `https://x.com`.
+3. Copy the values of:
+   - `ct0` — the CSRF token. This is the same value as the `X-Csrf-Token` header you see in the `Network` tab, so you can copy it from either place.
+   - `auth_token` — your login session.
+   - `twid` — contains your user ID. Only needed in `likes` mode.
 
 ## Building from source
 
