@@ -67,7 +67,7 @@ class ResolveSettingsTest(unittest.TestCase):
         self.assertEqual(settings["cookies"]["ct0"], "def")
         self.assertEqual(settings["cookies"]["twid"], "u%3D123456")
         self.assertTrue(settings["download"])
-        self.assertEqual(settings["path"], out)
+        self.assertEqual(settings["path"], out / "likes")
 
     def test_cli_args_override_config_values(self):
         write_config(self.dir, {"token": "config-token", "download": True})
@@ -91,7 +91,7 @@ class ResolveSettingsTest(unittest.TestCase):
 
         m.assert_called_once()
         self.assertFalse(settings["download"])
-        self.assertEqual(settings["path"], pathlib.Path("."))
+        self.assertEqual(settings["path"], pathlib.Path("likes"))
 
     def test_empty_cookies_string_falls_back_to_browser(self):
         write_config(self.dir, {"token": "test-token", "cookies": ""})
@@ -220,7 +220,7 @@ class MainIntegrationTest(unittest.TestCase):
             self.assertEqual(token_arg, "test-token")
             self.assertEqual(cookies_arg["auth_token"], "abc")
 
-            data_file = out / "data.json"
+            data_file = out / "likes" / "data.json"
             self.assertTrue(data_file.is_file())
             self.assertEqual(json.loads(data_file.read_text()), fake_images)
 

@@ -16,8 +16,19 @@ from tqdm.auto import tqdm
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(name)s] [%(levelname)s]: %(message)s")
 
-URL = "https://x.com/i/api/graphql/4X8QeWbeJ0jwGHaXSxExRw/Likes?"
-"""The URL to fetch data from."""
+DEFAULT_QUERY_IDS: typing.Mapping[str, str] = {
+    "likes": "4X8QeWbeJ0jwGHaXSxExRw",
+    "bookmarks": "6MQ4c6ZObu34HwbVAKNR8A",
+}
+"""Built-in GraphQL query IDs per mode. X rotates these periodically; if a
+request starts failing with 404, copy the current ID from your browser's
+network tab and set it via the 'query_ids' config option."""
+
+URL_TEMPLATES: typing.Mapping[str, str] = {
+    mode: f"https://x.com/i/api/graphql/{{query_id}}/{endpoint}?"
+    for mode, endpoint in (("likes", "Likes"), ("bookmarks", "Bookmarks"))
+}
+"""The URLs to fetch data from, per mode."""
 
 HEADERS: typing.Mapping[str, str] = {
     "authorization": "Bearer AAAAAAAAAAAAAAAAAAAAANRILgAAAAAAnNwIzUejRCOuH5E6I8xnZz4puTs%3D1Zv7ttfk8LF81IUq16cHjhLTvJu4FA33AGWWjCpTnA",
@@ -73,10 +84,32 @@ QUERY: typing.Dict[str, typing.Dict[str, typing.Any]] = {
 }
 """GraphQL query to fetch liked tweets."""
 
+MODES: typing.Mapping[str, typing.Mapping[str, typing.Any]] = {
+    "likes": {
+        "query": QUERY,
+        "needs_user_id": True,
+        "error_label": "Likes",
+    },
+    "bookmarks": {
+        "query": {
+            **QUERY,
+            "variables": {
+                "count": QUERY["variables"]["count"],
+                "includePromotedContent": False,
+            },
+        },
+        "needs_user_id": False,
+        "error_label": "Bookmarks",
+    },
+}
+"""Per-mode settings: GraphQL query, whether it needs a userId, and error label.
+
+Bookmarks are always the authenticated user's, so no userId is sent."""
+
 DEFAULT_CONFIG_FILENAME = "config.json"
 """Config filename to look for in the current directory."""
 
-CONFIG_KEYS = {"token", "cookies", "download", "path"}
+CONFIG_KEYS = {"token", "cookies", "download", "mode", "path", "query_ids"}
 """Keys allowed in the config file."""
 
 
@@ -111,9 +144,17 @@ def load_config(path: pathlib.Path) -> typing.Dict[str, typing.Any]:
 
     if "download" in config and not isinstance(config["download"], bool):
         raise ConfigError(f"Config value 'download' must be true or false, got: {config['download']!r}")
-    for key in ("token", "cookies", "path"):
+    for key in ("token", "cookies", "mode", "path"):
         if key in config and config[key] is not None and not isinstance(config[key], str):
             raise ConfigError(f"Config value '{key}' must be a string, got: {config[key]!r}")
+    if "mode" in config and config["mode"] not in MODES:
+        raise ConfigError(f"Config value 'mode' must be one of: {', '.join(sorted(MODES))}")
+    if "query_ids" in config and config["query_ids"] is not None:
+        query_ids = config["query_ids"]
+        if not isinstance(query_ids, dict) or not all(
+            isinstance(k, str) and isinstance(v, str) for k, v in query_ids.items()
+        ):
+            raise ConfigError("Config value 'query_ids' must be an object with string values.")
 
     return config
 
@@ -121,20 +162,24 @@ def load_config(path: pathlib.Path) -> typing.Dict[str, typing.Any]:
 def get_query(
     data: typing.Dict[str, typing.Dict[str, typing.Any]],
     *,
-    user_id: str,
+    user_id: str | None = None,
     cursor: str | None = None,
 ) -> typing.Dict[str, str]:
     """Obtain query.
     
     :param data: The data to convert to a query.
+    :param user_id: The user ID to include in the variables, if needed.
+    :param cursor: The pagination cursor, if any.
     :return: The query.
     """
     query: typing.Dict[str, str] = {}
     for key, value in data.items():
-        if key == "variables" and cursor is not None:
-            value = {"cursor": cursor, "userId": user_id, **value}
-        elif key == "variables":
-            value = {"userId": user_id, **value}
+        if key == "variables":
+            value = {
+                **({"cursor": cursor} if cursor is not None else {}),
+                **({"userId": user_id} if user_id else {}),
+                **value,
+            }
         query[key] = json.dumps(value, separators=(",", ":"))
 
     return query
@@ -232,6 +277,8 @@ async def collect_images_urls(
     cookies: typing.Mapping[str, str],
     token: str,
     *,
+    mode: str,
+    query_id: str,
     cursor: str | None = None,
     progress: tqdm,  # type: ignore[reportUnknownParameterType]
 ) -> typing.List[str]:
@@ -239,10 +286,14 @@ async def collect_images_urls(
     
     :param cookies: The cookies to use.
     :param token: The token to use.
+    :param mode: The export mode ('likes' or 'bookmarks').
+    :param query_id: The GraphQL query ID for the mode's endpoint.
     :return: The images URLs.
     """
-    query = get_query(QUERY, user_id=cookies["twid"][4:], cursor=cursor)
-    url = yarl.URL(URL).with_query(query)
+    mode_config = MODES[mode]
+    user_id = cookies["twid"][4:] if mode_config["needs_user_id"] else None
+    query = get_query(mode_config["query"], user_id=user_id, cursor=cursor)
+    url = yarl.URL(URL_TEMPLATES[mode].format(query_id=query_id)).with_query(query)
     async with (
         aiohttp.ClientSession(
             headers={**HEADERS, "x-csrf-token": token},
@@ -252,7 +303,7 @@ async def collect_images_urls(
     ):
         if not response.ok:
             progress.clear()
-            logger.error(f"Failed to fetch data: {response.status}")
+            logger.error(f"{mode_config['error_label']} request failed with status code: {response.status}")
             sys.exit(1)
 
         data = await response.json()
@@ -262,7 +313,7 @@ async def collect_images_urls(
 
         if (cursor := get_bottom_cursor(data)) and len(images) != 0:
             more_images = await collect_images_urls(
-                cookies, token, cursor=cursor, progress=progress
+                cookies, token, mode=mode, query_id=query_id, cursor=cursor, progress=progress
             )
             images = images + more_images
 
@@ -330,6 +381,12 @@ def parse_args(argv: typing.Sequence[str] | None = None) -> argparse.Namespace:
         type=str,
         help="Location for the script output (both the data file and downloaded images)."
     )
+    parser.add_argument(
+        "--bookmarks",
+        action="store_true",
+        default=None,
+        help="Export bookmarked photos instead of liked ones."
+    )
     return parser.parse_args(argv)
 
 
@@ -339,7 +396,8 @@ def resolve_settings(args: argparse.Namespace) -> typing.Dict[str, typing.Any]:
     CLI arguments take precedence over config file values.
 
     :param args: The parsed CLI arguments.
-    :return: The effective settings with keys: cookies, token, download, path.
+    :return: The effective settings with keys: cookies, token, download, path,
+        mode, query_id.
     """
     config_path = pathlib.Path(args.config).expanduser()
     config_exists = config_path.is_file()
@@ -359,11 +417,18 @@ def resolve_settings(args: argparse.Namespace) -> typing.Dict[str, typing.Any]:
     def pick(cli_value: typing.Any, key: str, default: typing.Any = None) -> typing.Any:
         return cli_value if cli_value is not None else config.get(key, default)
 
+    bookmarks = pick(args.bookmarks, "bookmarks", None)
+    mode = "bookmarks" if bookmarks else pick(None, "mode", "likes")
+
+    query_id = (config.get("query_ids") or {}).get(mode) or DEFAULT_QUERY_IDS[mode]
+
     download = pick(args.download, "download", False)
-    path = pathlib.Path(pick(args.path, "path", os.curdir)).expanduser()
-    if not path.is_dir():
-        logger.error(f"The output path is not a directory: {path}")
+    base_path = pathlib.Path(pick(args.path, "path", os.curdir)).expanduser()
+    if not base_path.is_dir():
+        logger.error(f"The output path is not a directory: {base_path}")
         sys.exit(1)
+    path = base_path / mode
+    path.mkdir(parents=True, exist_ok=True)
 
     token = pick(args.token, "token")
     if not token:
@@ -379,7 +444,14 @@ def resolve_settings(args: argparse.Namespace) -> typing.Dict[str, typing.Any]:
         logger.error(f"The following required cookies are missing: {', '.join(missing_cookies)}")
         sys.exit(1)
 
-    return {"cookies": cookies, "token": token, "download": download, "path": path}
+    return {
+        "cookies": cookies,
+        "token": token,
+        "download": download,
+        "path": path,
+        "mode": mode,
+        "query_id": query_id,
+    }
 
 
 async def main() -> None:
@@ -387,8 +459,16 @@ async def main() -> None:
     args = parse_args()
     settings = resolve_settings(args)
 
+    logger.info(f"Mode: {settings['mode']} | Output: {settings['path']}")
+
     progress = tqdm(desc="Fetching images", unit="")
-    images = await collect_images_urls(settings["cookies"], settings["token"], progress=progress)
+    images = await collect_images_urls(
+        settings["cookies"],
+        settings["token"],
+        mode=settings["mode"],
+        query_id=settings["query_id"],
+        progress=progress,
+    )
     progress.close()
 
     save_to_file(images, settings["path"])
