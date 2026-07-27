@@ -233,7 +233,11 @@ class MainIntegrationTest(unittest.TestCase):
             out.mkdir()
             write_config(tmp, {**VALID_CONFIG, "path": str(out)})
 
-            fake_images = ["https://pbs.twimg.com/media/a.jpg", "https://pbs.twimg.com/media/b.jpg"]
+            fake_images = [
+                "https://pbs.twimg.com/media/a.jpg",
+                "https://pbs.twimg.com/media/b.jpg",
+                "https://pbs.twimg.com/media/a.jpg",  # duplicate, as X returns each photo twice
+            ]
             mock_progress = mock.MagicMock()
 
             with chdir(tmp), \
@@ -253,7 +257,10 @@ class MainIntegrationTest(unittest.TestCase):
 
             data_file = out / "likes" / "data.json"
             self.assertTrue(data_file.is_file())
-            self.assertEqual(json.loads(data_file.read_text()), fake_images)
+            self.assertEqual(json.loads(data_file.read_text()), [
+                "https://pbs.twimg.com/media/a.jpg",
+                "https://pbs.twimg.com/media/b.jpg",
+            ])
 
 
 if __name__ == "__main__":

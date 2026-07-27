@@ -443,6 +443,11 @@ async def main() -> None:
     )
     progress.close()
 
+    before = len(images)
+    images = list(dict.fromkeys(images))
+    if removed := before - len(images):
+        logger.info(f"Removed {removed} duplicate URLs")
+
     save_to_file(images, settings["path"])
 
     if settings["download"]:
