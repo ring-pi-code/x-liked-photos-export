@@ -191,6 +191,40 @@ class ResolveSettingsTest(unittest.TestCase):
 
         self.assertIn("'download' must be true or false", "".join(logs.output))
 
+    def test_4k_defaults_to_false(self):
+        write_config(self.dir, VALID_CONFIG)
+
+        with chdir(self.dir):
+            settings = self.resolve([])
+
+        self.assertFalse(settings["4k"])
+
+    def test_4k_loaded_from_config(self):
+        write_config(self.dir, {**VALID_CONFIG, "4k": True})
+
+        with chdir(self.dir):
+            settings = self.resolve([])
+
+        self.assertTrue(settings["4k"])
+
+    def test_4k_cli_flag_overrides_config(self):
+        write_config(self.dir, VALID_CONFIG)
+
+        with chdir(self.dir):
+            settings = self.resolve(["--4k"])
+
+        self.assertTrue(settings["4k"])
+
+    def test_non_boolean_4k_errors(self):
+        write_config(self.dir, {**VALID_CONFIG, "4k": "yes"})
+
+        with chdir(self.dir), \
+                self.assertRaises(SystemExit), \
+                self.assertLogs(level=logging.ERROR) as logs:
+            self.resolve([])
+
+        self.assertIn("'4k' must be true or false", "".join(logs.output))
+
     def test_missing_ct0_errors(self):
         write_config(self.dir, {"auth_token": "a", "twid": "u=1"})
 
@@ -275,6 +309,34 @@ class MainIntegrationTest(unittest.TestCase):
             data_file = out / "likes" / "data.json"
             self.assertTrue(data_file.is_file())
             self.assertEqual(json.loads(data_file.read_text()), [post])
+
+    def test_main_rewrites_image_urls_to_4k_when_enabled(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            out = pathlib.Path(tmp) / "out"
+            out.mkdir()
+            write_config(tmp, {**VALID_CONFIG, "path": str(out), "4k": True})
+
+            post = {
+                "author": "Alice",
+                "handle": "alice",
+                "date": "2026-07-30T13:26:30+00:00",
+                "text": "hello world",
+                "post_url": "https://x.com/alice/status/100",
+                "images": ["https://pbs.twimg.com/media/a.jpg"],
+            }
+            mock_progress = mock.MagicMock()
+
+            with chdir(tmp), \
+                    mock.patch.object(sys, "argv", ["x-liked-photos-export"]), \
+                    mock.patch.object(main, "tqdm", return_value=mock_progress), \
+                    mock.patch.object(main, "collect_posts",
+                                      new=mock.AsyncMock(return_value=[post])):
+                import asyncio
+                asyncio.run(main.main())
+
+            data = json.loads((out / "likes" / "data.json").read_text())
+            self.assertEqual(data[0]["images"],
+                             ["https://pbs.twimg.com/media/a.jpg?format=jpg&name=4096x4096"])
 
 
 if __name__ == "__main__":

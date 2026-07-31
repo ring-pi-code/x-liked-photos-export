@@ -27,6 +27,7 @@ Copy `config.example.json` to `config.json` and fill in your values:
   "auth_token": "paste-auth_token-cookie-here",
   "twid": "",
   "download": false,
+  "4k": false,
   "mode": "likes",
   "path": ".",
   "likes_query_id": "paste-likes-query-id-here",
@@ -40,6 +41,7 @@ Copy `config.example.json` to `config.json` and fill in your values:
 | `auth_token` | **Required.** The `auth_token` cookie (see [Cookies](#cookies)). |
 | `twid` | The `twid` cookie. Required in `likes` mode only (see [Cookies](#cookies)). |
 | `download` | Optional. Set to `true` to also download the photos. Defaults to `false`. |
+| `4k` | Optional. Set to `true` to request the 4K version of each image. X serves the original when no 4K version exists. Defaults to `false`. |
 | `mode` | Optional. `likes` or `bookmarks`. Defaults to `likes`. |
 | `path` | Optional. Output directory for `data.json` and downloaded images. Defaults to the current directory. |
 | `likes_query_id` / `bookmarks_query_id` | **Required.** The GraphQL query IDs for the Likes and Bookmarks endpoints (see [Query IDs](#query-ids)). |
@@ -76,7 +78,7 @@ To export your bookmarks instead:
 python src/main.py --bookmarks
 ```
 
-To also download the photos, add `--download`.
+To also download the photos, add `--download`. To request 4K versions of the images, add `--4k`.
 
 A different config file can be selected with `--config path/to/config.json`. Any command line argument you pass overrides the corresponding value from the config file. Run `python src/main.py --help` for the full list.
 

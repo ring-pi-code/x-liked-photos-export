@@ -1,4 +1,5 @@
-"""Tests for parsing posts out of X's GraphQL responses.
+"""Tests for parsing posts out of X's GraphQL responses
+and for image URL handling.
 
 The fixtures mirror the real Likes endpoint response structure (verified
 by probing the API). All data is synthetic and deterministic.
@@ -143,6 +144,31 @@ class ParsePostsTest(unittest.TestCase):
             "https://x.com/alice/status/100",
             "https://x.com/bob/status/200",
         ])
+
+
+class To4kUrlTest(unittest.TestCase):
+    def test_appends_4k_query_for_jpg(self):
+        self.assertEqual(
+            main.to_4k_url("https://pbs.twimg.com/media/a.jpg"),
+            "https://pbs.twimg.com/media/a.jpg?format=jpg&name=4096x4096",
+        )
+
+    def test_preserves_png_extension(self):
+        self.assertEqual(
+            main.to_4k_url("https://pbs.twimg.com/media/a.png"),
+            "https://pbs.twimg.com/media/a.png?format=png&name=4096x4096",
+        )
+
+    def test_video_thumbnail(self):
+        url = "https://pbs.twimg.com/amplify_video_thumb/123/img/x.jpg"
+        self.assertEqual(
+            main.to_4k_url(url),
+            url + "?format=jpg&name=4096x4096",
+        )
+
+    def test_url_without_extension_is_unchanged(self):
+        url = "https://pbs.twimg.com/media/a"
+        self.assertEqual(main.to_4k_url(url), url)
 
 
 if __name__ == "__main__":

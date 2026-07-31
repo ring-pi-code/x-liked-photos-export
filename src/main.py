@@ -102,7 +102,7 @@ DEFAULT_CONFIG_FILENAME = "config.json"
 """Config filename to look for in the current directory."""
 
 CONFIG_KEYS = {
-    "ct0", "auth_token", "twid", "download", "mode", "path",
+    "ct0", "auth_token", "twid", "download", "mode", "path", "4k",
     "likes_query_id", "bookmarks_query_id",
 }
 """Keys allowed in the config file."""
@@ -137,8 +137,9 @@ def load_config(path: pathlib.Path) -> typing.Dict[str, typing.Any]:
             f"(allowed keys: {', '.join(sorted(CONFIG_KEYS))})"
         )
 
-    if "download" in config and not isinstance(config["download"], bool):
-        raise ConfigError(f"Config value 'download' must be true or false, got: {config['download']!r}")
+    for key in ("download", "4k"):
+        if key in config and not isinstance(config[key], bool):
+            raise ConfigError(f"Config value '{key}' must be true or false, got: {config[key]!r}")
     for key in ("ct0", "auth_token", "twid", "mode", "path", "likes_query_id", "bookmarks_query_id"):
         if key in config and config[key] is not None and not isinstance(config[key], str):
             raise ConfigError(f"Config value '{key}' must be a string, got: {config[key]!r}")
@@ -317,6 +318,23 @@ async def collect_posts(
         return posts
 
 
+def to_4k_url(url: str) -> str:
+    """Rewrite an image URL to request the 4K version.
+
+    X serves the original image when no 4K version exists, so this is
+    safe to apply to any image URL.
+
+    :param url: The image URL, e.g. "https://pbs.twimg.com/media/a.jpg".
+    :return: The URL with a 4K request query, or the original URL
+        if it has no extension.
+    """
+    parsed = yarl.URL(url)
+    extension = parsed.suffix.lstrip(".")
+    if not extension:
+        return url
+    return str(parsed.with_query({"format": extension, "name": "4096x4096"}))
+
+
 def save_to_file(posts: typing.List[typing.Dict[str, typing.Any]], path: pathlib.Path) -> None:
     """Save posts to a file.
 
@@ -338,7 +356,7 @@ async def download_images(posts: typing.List[typing.Dict[str, typing.Any]], path
         for url in tqdm(urls, desc="Downloading images", unit=""):
             async with session.get(url) as response:
                 data = await response.read()
-                with open(path / pathlib.Path(url).name, "wb") as f:
+                with open(path / yarl.URL(url).name, "wb") as f:
                     f.write(data)
 
 
@@ -390,6 +408,13 @@ def parse_args(argv: typing.Sequence[str] | None = None) -> argparse.Namespace:
         default=None,
         help="Export bookmarked photos instead of liked ones."
     )
+    parser.add_argument(
+        "--4k",
+        dest="request_4k",
+        action="store_true",
+        default=None,
+        help="Request 4K versions of images when available."
+    )
     return parser.parse_args(argv)
 
 
@@ -424,6 +449,7 @@ def resolve_settings(args: argparse.Namespace) -> typing.Dict[str, typing.Any]:
     mode = "bookmarks" if bookmarks else pick(None, "mode", "likes")
 
     download = pick(args.download, "download", False)
+    request_4k = pick(args.request_4k, "4k", False)
     base_path = pathlib.Path(pick(args.path, "path", os.curdir)).expanduser()
     if not base_path.is_dir():
         logger.error(f"The output path is not a directory: {base_path}")
@@ -471,6 +497,7 @@ def resolve_settings(args: argparse.Namespace) -> typing.Dict[str, typing.Any]:
         "cookies": cookies,
         "ct0": ct0,
         "download": download,
+        "4k": request_4k,
         "path": path,
         "mode": mode,
         "query_id": query_id,
@@ -498,6 +525,11 @@ async def main() -> None:
     posts = list({post["post_url"] or post["images"][0]: post for post in posts}.values())
     if removed := before - len(posts):
         logger.info(f"Removed {removed} duplicate posts")
+
+    if settings["4k"]:
+        logger.info("Requesting 4K image versions")
+        for post in posts:
+            post["images"] = [to_4k_url(url) for url in post["images"]]
 
     save_to_file(posts, settings["path"])
 

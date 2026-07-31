@@ -3,6 +3,7 @@
   "auth_token": "paste-auth_token-cookie-here",
   "twid": "",
   "download": false,
+  "4k": false,
   "mode": "likes",
   "path": ".",
   "likes_query_id": "paste-likes-query-id-here",
