@@ -29,7 +29,9 @@
     let repeat = true;
     let imageOrder = [];
 
-    const STORAGE_KEY = 'pi-slideshow-settings';
+    // v2: the v1 key predates the server-side default folder and could
+    // hold a stale folder that silently wins over it.
+    const STORAGE_KEY = 'pi-slideshow-settings-v2';
 
     function saveSettings() {
         try {
@@ -290,7 +292,7 @@
     });
 
     // Fade the hint and mouse cursor after a few seconds without mouse
-    // movement, but only in fullscreen with the UI hidden.
+    // movement, whenever the UI is hidden.
     const IDLE_MS = 3000;
     let idleTimer = null;
 
@@ -305,7 +307,7 @@
     function resetIdleTimer() {
         clearIdle();
         idleTimer = setTimeout(() => {
-            if (document.fullscreenElement && document.body.classList.contains('hide-ui')) {
+            if (document.body.classList.contains('hide-ui')) {
                 document.body.classList.add('idle');
             }
         }, IDLE_MS);
