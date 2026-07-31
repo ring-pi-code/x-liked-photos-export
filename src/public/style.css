@@ -131,6 +131,11 @@ body.hide-ui .controls {
     grid-template-rows: minmax(0, 1fr) minmax(0, 1fr);
 }
 
+.layout-6 {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr) minmax(0, 1fr);
+}
+
 /* Shown when the UI is hidden; colors are fixed because it overlays photos. */
 .hover-hint {
     position: fixed;
