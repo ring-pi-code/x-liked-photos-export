@@ -71,6 +71,11 @@ body.hide-ui .controls {
     white-space: nowrap;
 }
 
+.controls .nav-link {
+    font-size: 13px;
+    white-space: nowrap;
+}
+
 /* The stage stays black in both themes: photos look best on black. */
 .stage {
     display: grid;

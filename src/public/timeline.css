@@ -1,0 +1,142 @@
+/* Timeline page — X-style post feed.
+   Base element styling and light/dark theming come from Oat. */
+
+.topbar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 10px 14px;
+    padding: 10px 14px;
+    background: var(--faint);
+    border-bottom: 1px solid var(--border);
+    position: sticky;
+    top: 0;
+    z-index: 100;
+}
+
+.nav-link {
+    white-space: nowrap;
+}
+
+.control-group {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.control-group label {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--muted-foreground);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    white-space: nowrap;
+}
+
+#folder {
+    width: 260px;
+}
+
+.status {
+    font-size: 13px;
+    color: var(--muted-foreground);
+    white-space: nowrap;
+}
+
+.timeline {
+    max-width: 600px;
+    margin: 0 auto;
+    padding: 12px 6px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.post {
+    background: var(--card);
+    color: var(--card-foreground);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-large);
+    padding: 14px 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.post-header {
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
+    flex-wrap: wrap;
+    font-size: 14px;
+}
+
+.post-author {
+    font-weight: 600;
+}
+
+.post-handle,
+.post-date {
+    color: var(--muted-foreground);
+    font-size: 13px;
+}
+
+.post-text {
+    font-size: 14px;
+    line-height: 1.45;
+    white-space: pre-wrap;
+    overflow-wrap: break-word;
+}
+
+/* All tiles are normalized to the same size regardless of the source
+   resolution: single media is 16:9, grids are square cells. */
+.post-media {
+    display: grid;
+    gap: 4px;
+    border-radius: var(--radius-medium);
+    overflow: hidden;
+}
+
+.post-media.count-1 {
+    grid-template-columns: 1fr;
+}
+
+.post-media.count-2,
+.post-media.count-3,
+.post-media.count-4 {
+    grid-template-columns: 1fr 1fr;
+}
+
+.media-tile {
+    width: 100%;
+    aspect-ratio: 1 / 1;
+    object-fit: cover;
+    display: block;
+    background: var(--muted);
+}
+
+.post-media.count-1 .media-tile {
+    aspect-ratio: 16 / 9;
+}
+
+.media-tile.placeholder {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    padding: 8px;
+    color: var(--muted-foreground);
+    font-size: 13px;
+}
+
+.post-footer {
+    font-size: 13px;
+}
+
+.post-footer a {
+    color: var(--muted-foreground);
+}
+
+.sentinel {
+    height: 1px;
+}

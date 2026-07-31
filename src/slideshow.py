@@ -8,6 +8,7 @@ Run with: python src/slideshow.py [--host HOST] [--port PORT] [--folder FOLDER]
 """
 
 import argparse
+import datetime
 import json
 import os
 import pathlib
@@ -15,6 +16,8 @@ import sys
 import typing
 import urllib.parse
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+import yarl
 
 import main as exporter
 
@@ -101,6 +104,38 @@ class Handler(BaseHTTPRequestHandler):
             self.send_json({"folder": str(root), "count": len(images), "images": images})
             return
 
+        if path == "/api/posts":
+            folder = query.get("folder", [""])[0].strip()
+            if not folder:
+                self.send_json({"error": "folder parameter is required"}, 400)
+                return
+
+            root = pathlib.Path(os.path.realpath(os.path.expanduser(folder)))
+            if not root.is_dir():
+                self.send_json({"error": "folder not found", "path": str(root)}, 404)
+                return
+
+            try:
+                result = load_timeline_posts(
+                    root,
+                    sort=query.get("sort", ["desc"])[0],
+                    date_from=query.get("from", [""])[0],
+                    date_to=query.get("to", [""])[0],
+                    offset=int(query.get("offset", ["0"])[0]),
+                    limit=int(query.get("limit", ["50"])[0]),
+                )
+            except ValueError as e:
+                self.send_json({"error": str(e)}, 400)
+                return
+            except exporter.ConfigError as e:
+                self.send_json({"error": str(e)}, 404)
+                return
+
+            # Loading a folder allows its images to be served via /api/image.
+            self.server.allowed_roots.add(root)
+            self.send_json(result)
+            return
+
         if path == "/api/image":
             file_path = query.get("path", [""])[0].strip()
             if not file_path:
@@ -130,6 +165,130 @@ class Handler(BaseHTTPRequestHandler):
             return
 
         self.send_error(404, "File not found")
+
+
+def parse_post_date(post: typing.Mapping[str, typing.Any]) -> datetime.datetime | None:
+    """Parse a post's ISO 8601 date. Naive dates are assumed UTC.
+
+    :param post: The post to read the date from.
+    :return: The parsed date, or None if missing or unparseable.
+    """
+    try:
+        parsed = datetime.datetime.fromisoformat(post.get("date", ""))
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=datetime.timezone.utc)
+    return parsed
+
+
+def parse_date_param(value: str, name: str) -> datetime.date:
+    """Parse a YYYY-MM-DD query parameter into a date.
+
+    :param value: The parameter value.
+    :param name: The parameter name, used in the error message.
+    :return: The parsed date.
+    :raises ValueError: If the value is not a valid YYYY-MM-DD date.
+    """
+    try:
+        return datetime.date.fromisoformat(value)
+    except ValueError:
+        raise ValueError(f"Invalid '{name}' date: {value!r} (expected YYYY-MM-DD)") from None
+
+
+def to_media(post: typing.Mapping[str, typing.Any], root: pathlib.Path) -> typing.List[typing.Dict[str, str]]:
+    """Map a post's media to timeline tiles.
+
+    Images that were downloaded become "image" tiles pointing at the local
+    file. Images that were not downloaded become "missing" placeholders,
+    and each video becomes a "video" placeholder.
+
+    :param post: The post whose media to map.
+    :param root: The export folder the images were downloaded to.
+    :return: The media tiles, images first, then videos.
+    """
+    media = []
+    for url in post.get("images", []):
+        name = yarl.URL(url).name
+        local = root / name
+        if name and local.is_file():
+            media.append({"kind": "image", "name": name, "path": str(local)})
+        else:
+            media.append({"kind": "missing", "name": name})
+    media.extend({"kind": "video"} for _ in post.get("videos", []))
+    return media
+
+
+def load_timeline_posts(
+    root: pathlib.Path,
+    *,
+    sort: str = "desc",
+    date_from: str = "",
+    date_to: str = "",
+    offset: int = 0,
+    limit: int = 50,
+) -> typing.Dict[str, typing.Any]:
+    """Load posts from a folder's data file for the timeline page.
+
+    Filters by date range (inclusive on both ends), sorts by date and
+    paginates. Posts without a valid date sort last in both directions.
+
+    :param root: The export folder containing data.json.
+    :param sort: "desc" (newest first) or "asc" (oldest first).
+    :param date_from: Only include posts on or after this YYYY-MM-DD date.
+    :param date_to: Only include posts on or before this YYYY-MM-DD date.
+    :param offset: How many posts to skip.
+    :param limit: The page size (capped at 200).
+    :return: The page of posts plus pagination info.
+    :raises ValueError: If a parameter is invalid.
+    :raises exporter.ConfigError: If the data file is missing or invalid.
+    """
+    if sort not in ("asc", "desc"):
+        raise ValueError(f"Invalid 'sort': {sort!r} (expected 'asc' or 'desc')")
+
+    start = end = None
+    if date_from:
+        start = datetime.datetime.combine(
+            parse_date_param(date_from, "from"), datetime.time.min, datetime.timezone.utc
+        )
+    if date_to:
+        end = datetime.datetime.combine(
+            parse_date_param(date_to, "to"), datetime.time.max, datetime.timezone.utc
+        )
+
+    offset = max(0, offset)
+    limit = min(max(1, limit), 200)
+
+    posts = exporter.load_posts(root)
+    dated = [(parse_post_date(post), post) for post in posts]
+    if start:
+        dated = [dp for dp in dated if dp[0] and dp[0] >= start]
+    if end:
+        dated = [dp for dp in dated if dp[0] and dp[0] <= end]
+
+    sentinel = (datetime.datetime.min if sort == "desc" else datetime.datetime.max)
+    sentinel = sentinel.replace(tzinfo=datetime.timezone.utc)
+    dated.sort(key=lambda dp: dp[0] or sentinel, reverse=(sort == "desc"))
+
+    total = len(dated)
+    page = dated[offset:offset + limit]
+    return {
+        "folder": str(root),
+        "total": total,
+        "offset": offset,
+        "limit": limit,
+        "posts": [
+            {
+                "author": post.get("author", ""),
+                "handle": post.get("handle", ""),
+                "date": post.get("date", ""),
+                "text": post.get("text", ""),
+                "post_url": post.get("post_url", ""),
+                "media": to_media(post, root),
+            }
+            for _, post in page
+        ],
+    }
 
 
 def default_folder(config_path: pathlib.Path) -> pathlib.Path:

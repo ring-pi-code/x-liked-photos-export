@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Timeline — Pi Slideshow</title>
+    <link rel="stylesheet" href="/vendor/oat.min.css">
+    <link rel="stylesheet" href="timeline.css">
+</head>
+<body>
+    <div class="topbar">
+        <a class="nav-link" href="/">← Slideshow</a>
+        <div class="control-group">
+            <label for="folder">Folder</label>
+            <input type="text" id="folder" placeholder="/path/to/export" autocomplete="off">
+        </div>
+        <div class="control-group">
+            <label for="sort">Sort</label>
+            <select id="sort">
+                <option value="desc" selected>Newest first</option>
+                <option value="asc">Oldest first</option>
+            </select>
+        </div>
+        <div class="control-group">
+            <label for="from">From</label>
+            <input type="date" id="from">
+        </div>
+        <div class="control-group">
+            <label for="to">To</label>
+            <input type="date" id="to">
+        </div>
+        <button id="applyBtn">Apply</button>
+        <div class="status" id="status"></div>
+    </div>
+
+    <main id="timeline" class="timeline"></main>
+    <div id="sentinel" class="sentinel"></div>
+
+    <script src="timeline.js"></script>
+</body>
+</html>

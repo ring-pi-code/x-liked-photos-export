@@ -115,6 +115,10 @@ Options (see `python src/slideshow.py --help`):
 
 The server only serves image files, and only from folders you have loaded in the UI. For a kiosk display, launch your browser in kiosk mode, e.g. `chromium --kiosk http://localhost:8765`.
 
+### Timeline view
+
+Open `/timeline.html` (linked from the slideshow control bar) for an X-style feed of your posts, newest first. It uses only local data: post details come from `data.json`, images from your downloads. Sort by date, or filter with the From/To date inputs (before, after, or between dates). More posts load as you scroll. Images that were not downloaded and videos show a placeholder, and every post links to the original on X.
+
 ## Cookies
 
 The tool needs two or three cookies from your browser to call the X API on your behalf. To get them:
