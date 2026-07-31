@@ -3,3 +3,5 @@ data/
 __pycache__/
 *.json
 !config.example.json
+likes/
+bookmarks/
