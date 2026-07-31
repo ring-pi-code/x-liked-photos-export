@@ -150,11 +150,10 @@
         return indices;
     }
 
-    function render() {
-        if (images.length === 0) {
-            stage.innerHTML = '';
-            return;
-        }
+    const FADE_MS = 200;
+    let fadeTimer = null;
+
+    function buildStage() {
         const indices = getIndices();
         stage.innerHTML = '';
         indices.forEach((idx) => {
@@ -163,9 +162,37 @@
             img.alt = images[idx].name;
             img.loading = 'eager';
             img.draggable = false;
+            const show = () => requestAnimationFrame(() => img.classList.add('loaded'));
+            img.addEventListener('load', show, { once: true });
+            img.addEventListener('error', show, { once: true });
+            if (img.complete && img.naturalWidth > 0) show();
             stage.appendChild(img);
         });
+    }
+
+    function render() {
+        if (images.length === 0) {
+            if (fadeTimer) {
+                clearTimeout(fadeTimer);
+                fadeTimer = null;
+            }
+            stage.innerHTML = '';
+            return;
+        }
         updateStatusProgress();
+        const current = stage.querySelectorAll('img');
+        if (current.length === 0) {
+            buildStage();
+            return;
+        }
+        // Fade the current images out, then swap in the new ones (they fade
+        // in on load). A rapid re-render cancels the pending swap.
+        current.forEach((img) => img.classList.add('fade-out'));
+        if (fadeTimer) clearTimeout(fadeTimer);
+        fadeTimer = setTimeout(() => {
+            fadeTimer = null;
+            buildStage();
+        }, FADE_MS);
     }
 
     function updateStatusProgress() {

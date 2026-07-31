@@ -98,6 +98,17 @@ body.hide-ui .controls {
     background: #000;
     user-select: none;
     display: block;
+    opacity: 0;
+    transition: opacity 0.2s ease;
+}
+
+.stage img.loaded {
+    opacity: 1;
+}
+
+/* Must come after .loaded so it wins for images fading out. */
+.stage img.fade-out {
+    opacity: 0;
 }
 
 .layout-1 {
