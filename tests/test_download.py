@@ -132,7 +132,7 @@ class DownloadImagesTest(unittest.TestCase):
 
     def test_interrupted_download_is_retried(self):
         content_a = self.serve_file("a.jpg", b"server-version-a")
-        (self.out_path / "a.jpg.part").write_bytes(b"partial")
+        (self.out_path / ".a.jpg.part").write_bytes(b"partial")
         port = self.start_server()
 
         posts = [{"images": [f"http://127.0.0.1:{port}/a.jpg"]}]
@@ -140,7 +140,7 @@ class DownloadImagesTest(unittest.TestCase):
         asyncio.run(main.download_images(posts, self.out_path))
 
         self.assertEqual((self.out_path / "a.jpg").read_bytes(), content_a)
-        self.assertFalse((self.out_path / "a.jpg.part").exists())
+        self.assertFalse((self.out_path / ".a.jpg.part").exists())
 
     def test_crash_leaves_no_partial_image(self):
         port = self.start_server(TruncatingHandler)
@@ -153,7 +153,7 @@ class DownloadImagesTest(unittest.TestCase):
         # Nothing is written before the body arrives complete, so a crash
         # leaves no trace. The missing final file makes the next run retry.
         self.assertFalse((self.out_path / "a.jpg").exists())
-        self.assertFalse((self.out_path / "a.jpg.part").exists())
+        self.assertFalse((self.out_path / ".a.jpg.part").exists())
 
     def test_downloads_in_parallel_when_concurrency_allows(self):
         contents = {f"{c}.jpg": f"bytes-{c}".encode() for c in "abcdefgh"}

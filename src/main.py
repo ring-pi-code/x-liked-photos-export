@@ -396,9 +396,10 @@ async def download_images(
     """Download images.
 
     Images that already exist are skipped, so an interrupted run can be
-    resumed by running the tool again. Each image is written to a ".part"
-    file and renamed once complete, so a crash never leaves a partial
-    image behind under its final name.
+    resumed by running the tool again. Each image is written to a hidden
+    ".part" file and renamed once complete, so a crash never leaves a
+    partial image behind under its final name, and in-progress downloads
+    stay invisible in file explorers.
 
     :param posts: The posts whose images to download.
     :param path: The path to download the images to.
@@ -412,7 +413,7 @@ async def download_images(
         async with semaphore:
             target = path / yarl.URL(url).name
             if not target.exists():
-                partial = target.with_name(target.name + ".part")
+                partial = target.with_name(f".{target.name}.part")
                 async with session.get(url) as response:
                     data = await response.read()
                     partial.write_bytes(data)

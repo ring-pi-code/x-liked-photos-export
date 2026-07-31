@@ -85,7 +85,7 @@ python src/main.py --bookmarks
 
 To also download the photos, add `--download`. To request 4K versions of the images, add `--4k`.
 
-Downloads can be resumed. Images that already exist are skipped, so if a run is interrupted, run the tool again to continue where it left off. Interrupted downloads leave `.part` files behind and are retried on the next run.
+Downloads can be resumed. Images that already exist are skipped, so if a run is interrupted, run the tool again to continue where it left off. Interrupted downloads leave hidden `.part` files behind (e.g. `.photo.jpg.part`) and are retried on the next run.
 
 > [!NOTE]
 > Filenames are the same in 4K and normal mode. If you download without 4K and later enable it, already downloaded images are not replaced. Use a fresh output directory when switching.
