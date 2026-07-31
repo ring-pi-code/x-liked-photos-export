@@ -2,6 +2,7 @@
 
 import http.client
 import json
+import os
 import pathlib
 import sys
 import tempfile
@@ -55,7 +56,13 @@ class SlideshowServerTest(unittest.TestCase):
         status, data = get_json(f"{self.base}/api/config")
 
         self.assertEqual(status, 200)
-        self.assertEqual(data["default_folder"], str(self.images))
+        self.assertEqual(data["default_folder"], os.path.realpath(self.images))
+
+    def test_make_server_resolves_relative_folder_to_absolute(self):
+        server = slideshow.make_server("127.0.0.1", 0, "some/relative/folder")
+        self.addCleanup(server.server_close)
+
+        self.assertEqual(server.default_folder, os.path.realpath("some/relative/folder"))
 
     def test_api_images_lists_images_sorted(self):
         status, data = get_json(f"{self.base}/api/images?folder={self.images}")

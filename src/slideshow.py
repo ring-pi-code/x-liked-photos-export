@@ -311,15 +311,16 @@ def make_server(host: str, port: int, folder: str) -> ThreadingHTTPServer:
 
     :param host: The interface to bind to.
     :param port: The port to listen on (0 picks a free one).
-    :param folder: The default folder shown in the UI. Its images are
-        allowed to be served right away; other folders become allowed
-        once loaded through the UI.
+    :param folder: The default folder shown in the UI. Resolved to an
+        absolute path. Its images are allowed to be served right away;
+        other folders become allowed once loaded through the UI.
     :return: The configured server, ready to serve_forever.
     """
+    folder = os.path.realpath(os.path.expanduser(folder))
     server = ThreadingHTTPServer((host, port), Handler)
     server.default_folder = folder
     server.allowed_roots = set()
-    root = pathlib.Path(os.path.realpath(os.path.expanduser(folder)))
+    root = pathlib.Path(folder)
     if root.is_dir():
         server.allowed_roots.add(root)
     return server
