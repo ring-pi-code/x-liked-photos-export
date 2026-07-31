@@ -17,6 +17,8 @@ source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
+(On Windows, activate with `.venv\Scripts\activate` instead of the `source` line.)
+
 ## Configuration
 
 Copy `config.example.json` to `config.json` and fill in your values:
@@ -121,7 +123,7 @@ Open `/timeline.html` (linked from the slideshow control bar) for an X-style fee
 
 ## Double-click launchers
 
-To run the tools without the command line, generate clickable launchers once per machine:
+To run the tools without the command line, generate clickable launchers once per machine. Finish [Setup](#setup) first — the launchers call the venv's Python. The installer itself is dependency-free; any Python 3 runs it, no activation needed:
 
 ```bash
 python src/install_launchers.py
