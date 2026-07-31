@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pi Slideshow</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="controls" id="controls">
+        <div class="control-group">
+            <label for="folder">Folder</label>
+            <input type="text" id="folder" placeholder="/path/to/images" autocomplete="off">
+            <button id="loadBtn">Load</button>
+        </div>
+
+        <div class="control-group">
+            <label for="duration">Duration (s)</label>
+            <input type="number" id="duration" value="5" min="1" max="3600" step="1">
+        </div>
+
+        <div class="control-group layout-controls">
+            <label>Layout</label>
+            <button class="layout-btn active" data-layout="1" title="Single image">1</button>
+            <button class="layout-btn" data-layout="2h" title="2 images side by side">2 ↔</button>
+            <button class="layout-btn" data-layout="2v" title="2 images stacked">2 ↕</button>
+            <button class="layout-btn" data-layout="4" title="4 images grid">4</button>
+        </div>
+
+        <div class="control-group playback-controls">
+            <button id="prevBtn" title="Previous (←)">◀ Prev</button>
+            <button id="playPauseBtn" title="Play/Pause (Space)">Play</button>
+            <button id="nextBtn" title="Next (→)">Next ▶</button>
+            <button id="fullscreenBtn" title="Full screen (F)">⛶ Full Screen</button>
+        </div>
+
+        <div class="control-group options-controls">
+            <button id="shuffleBtn" class="toggle" title="Shuffle order">Shuffle: Off</button>
+            <button id="repeatBtn" class="toggle active" title="Repeat when finished">Repeat: On</button>
+            <button id="hideUiBtn" title="Hide controls (H)">Hide UI</button>
+        </div>
+
+        <div class="status" id="status">Enter a folder and click Load</div>
+    </div>
+
+    <div id="stage" class="stage layout-1">
+        <!-- Images injected here -->
+    </div>
+
+    <div class="hover-hint" id="hoverHint">Press H to show controls</div>
+
+    <script src="app.js"></script>
+</body>
+</html>

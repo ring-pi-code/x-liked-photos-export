@@ -96,6 +96,25 @@ Downloads can be resumed. Images that already exist are skipped, so if a run is 
 
 A different config file can be selected with `--config path/to/config.json`. Any command line argument you pass overrides the corresponding value from the config file. Run `python src/main.py --help` for the full list.
 
+## Slideshow
+
+The project also includes a small web slideshow for viewing your exported photos in a browser (adapted from pi-slideshow). To start it:
+
+```bash
+python src/slideshow.py
+```
+
+Then open http://localhost:8765. The starting folder defaults to your export location (`path` + `mode` from `config.json`, e.g. `likes/` or `bookmarks/`), so a fresh export shows up without typing any path.
+
+Options (see `python src/slideshow.py --help`):
+
+- `--port N` — listen on another port.
+- `--folder PATH` — start with a different folder.
+- `--host 0.0.0.0` — allow other devices on your network to view the slideshow. By default only this machine can reach it.
+- `--config PATH` — resolve the default folder from a different config file.
+
+The server only serves image files, and only from folders you have loaded in the UI. For a kiosk display, launch your browser in kiosk mode, e.g. `chromium --kiosk http://localhost:8765`.
+
 ## Cookies
 
 The tool needs two or three cookies from your browser to call the X API on your behalf. To get them:
