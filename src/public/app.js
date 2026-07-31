@@ -286,13 +286,39 @@
 
     hideUiBtn.addEventListener('click', () => {
         document.body.classList.add('hide-ui');
+        resetIdleTimer();
     });
+
+    // Fade the hint and mouse cursor after a few seconds without mouse
+    // movement, but only in fullscreen with the UI hidden.
+    const IDLE_MS = 3000;
+    let idleTimer = null;
+
+    function clearIdle() {
+        document.body.classList.remove('idle');
+        if (idleTimer) {
+            clearTimeout(idleTimer);
+            idleTimer = null;
+        }
+    }
+
+    function resetIdleTimer() {
+        clearIdle();
+        idleTimer = setTimeout(() => {
+            if (document.fullscreenElement && document.body.classList.contains('hide-ui')) {
+                document.body.classList.add('idle');
+            }
+        }, IDLE_MS);
+    }
+
+    document.addEventListener('mousemove', resetIdleTimer);
 
     document.addEventListener('fullscreenchange', () => {
         if (document.fullscreenElement) {
             fullscreenBtn.textContent = 'Exit Full Screen';
         } else {
             fullscreenBtn.textContent = '⛶ Full Screen';
+            clearIdle();
         }
     });
 
@@ -308,8 +334,10 @@
             fullscreenBtn.click();
         } else if (e.key === 'h' || e.key === 'H') {
             document.body.classList.toggle('hide-ui');
+            resetIdleTimer();
         } else if (e.key === 'Escape') {
             document.body.classList.remove('hide-ui');
+            clearIdle();
         }
     });
 })();

@@ -127,7 +127,7 @@ body.hide-ui .controls {
     font-size: 12px;
     border-radius: 0 0 6px 6px;
     pointer-events: none;
-    transition: transform 0.25s ease;
+    transition: transform 0.25s ease, opacity 0.4s ease;
     z-index: 99;
 }
 
@@ -135,12 +135,12 @@ body.hide-ui .hover-hint {
     transform: translateX(-50%) translateY(0);
 }
 
-body.hide-ui {
-    cursor: none;
+body.hide-ui.idle .hover-hint {
+    opacity: 0;
 }
 
-body.hide-ui:hover {
-    cursor: auto;
+body.hide-ui.idle {
+    cursor: none;
 }
 
 /* Make sure fullscreen works nicely */
