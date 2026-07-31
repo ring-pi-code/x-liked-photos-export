@@ -29,6 +29,7 @@ Copy `config.example.json` to `config.json` and fill in your values:
   "download": false,
   "4k": false,
   "concurrency": 4,
+  "skip_fetch": false,
   "mode": "likes",
   "path": ".",
   "likes_query_id": "paste-likes-query-id-here",
@@ -44,6 +45,7 @@ Copy `config.example.json` to `config.json` and fill in your values:
 | `download` | Optional. Set to `true` to also download the photos. Defaults to `false`. |
 | `4k` | Optional. Set to `true` to request the 4K version of each image. X serves the original when no 4K version exists. Defaults to `false`. |
 | `concurrency` | Optional. How many images to download in parallel. One of `1`, `2`, `4`, `8`. Defaults to `4`. |
+| `skip_fetch` | Optional. Set to `true` to skip fetching posts from X and download from the existing `data.json`. No cookies are needed in this mode. Defaults to `false`. |
 | `mode` | Optional. `likes` or `bookmarks`. Defaults to `likes`. |
 | `path` | Optional. Output directory for `data.json` and downloaded images. Defaults to the current directory. |
 | `likes_query_id` / `bookmarks_query_id` | **Required.** The GraphQL query IDs for the Likes and Bookmarks endpoints (see [Query IDs](#query-ids)). |
@@ -84,6 +86,8 @@ python src/main.py --bookmarks
 ```
 
 To also download the photos, add `--download`. To request 4K versions of the images, add `--4k`.
+
+To download from an existing `data.json` without fetching from X again, add `--skip-fetch`. No cookies are needed in this mode.
 
 Downloads can be resumed. Images that already exist are skipped, so if a run is interrupted, run the tool again to continue where it left off. Interrupted downloads leave hidden `.part` files behind (e.g. `.photo.jpg.part`) and are retried on the next run.
 

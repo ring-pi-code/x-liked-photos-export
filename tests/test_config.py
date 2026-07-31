@@ -261,6 +261,44 @@ class ResolveSettingsTest(unittest.TestCase):
 
                 self.assertIn("'concurrency' must be one of", "".join(logs.output))
 
+    def test_skip_fetch_defaults_to_false(self):
+        write_config(self.dir, VALID_CONFIG)
+
+        with chdir(self.dir):
+            settings = self.resolve([])
+
+        self.assertFalse(settings["skip_fetch"])
+
+    def test_skip_fetch_forces_download_and_needs_no_credentials(self):
+        out = pathlib.Path(self.dir) / "out"
+        out.mkdir()
+        write_config(self.dir, {"skip_fetch": True, "path": str(out)})
+
+        with chdir(self.dir):
+            settings = self.resolve([])
+
+        self.assertTrue(settings["skip_fetch"])
+        self.assertTrue(settings["download"])
+        self.assertEqual(settings["path"], out / "likes")
+
+    def test_skip_fetch_cli_flag(self):
+        write_config(self.dir, VALID_CONFIG)
+
+        with chdir(self.dir):
+            settings = self.resolve(["--skip-fetch"])
+
+        self.assertTrue(settings["skip_fetch"])
+
+    def test_non_boolean_skip_fetch_errors(self):
+        write_config(self.dir, {**VALID_CONFIG, "skip_fetch": "yes"})
+
+        with chdir(self.dir), \
+                self.assertRaises(SystemExit), \
+                self.assertLogs(level=logging.ERROR) as logs:
+            self.resolve([])
+
+        self.assertIn("'skip_fetch' must be true or false", "".join(logs.output))
+
     def test_missing_ct0_errors(self):
         write_config(self.dir, {"auth_token": "a", "twid": "u=1"})
 

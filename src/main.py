@@ -103,7 +103,7 @@ DEFAULT_CONFIG_FILENAME = "config.json"
 
 CONFIG_KEYS = {
     "ct0", "auth_token", "twid", "download", "mode", "path", "4k",
-    "likes_query_id", "bookmarks_query_id", "concurrency",
+    "likes_query_id", "bookmarks_query_id", "concurrency", "skip_fetch",
 }
 """Keys allowed in the config file."""
 
@@ -140,7 +140,7 @@ def load_config(path: pathlib.Path) -> typing.Dict[str, typing.Any]:
             f"(allowed keys: {', '.join(sorted(CONFIG_KEYS))})"
         )
 
-    for key in ("download", "4k"):
+    for key in ("download", "4k", "skip_fetch"):
         if key in config and not isinstance(config[key], bool):
             raise ConfigError(f"Config value '{key}' must be true or false, got: {config[key]!r}")
     if "concurrency" in config:
@@ -344,6 +344,37 @@ async def collect_posts(
         return posts
 
 
+def load_posts(path: pathlib.Path) -> typing.List[typing.Dict[str, typing.Any]]:
+    """Load posts from a previously saved data file.
+
+    :param path: The directory containing the data file.
+    :return: The posts from the data file.
+    :raises ConfigError: If the file is missing, is not valid JSON
+        or has an unexpected format.
+    """
+    data_file = path / "data.json"
+    if not data_file.is_file():
+        raise ConfigError(
+            f"No data file: {data_file}. Run a normal fetch first (without --skip-fetch)."
+        )
+
+    try:
+        posts = json.loads(data_file.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as e:
+        raise ConfigError(f"Data file {data_file} contains invalid JSON: {e}") from e
+
+    if not isinstance(posts, list) or any(
+        not isinstance(post, dict) or not isinstance(post.get("images"), list)
+        for post in posts
+    ):
+        raise ConfigError(
+            f"Data file {data_file} has an unexpected format. "
+            "Re-run a normal fetch to regenerate it."
+        )
+
+    return posts
+
+
 def dedupe_posts(
     posts: typing.List[typing.Dict[str, typing.Any]],
 ) -> typing.List[typing.Dict[str, typing.Any]]:
@@ -486,6 +517,13 @@ def parse_args(argv: typing.Sequence[str] | None = None) -> argparse.Namespace:
         choices=CONCURRENCY_CHOICES,
         help="Number of images to download in parallel. Defaults to 4."
     )
+    parser.add_argument(
+        "--skip-fetch",
+        dest="skip_fetch",
+        action="store_true",
+        default=None,
+        help="Skip fetching posts from X and download from the existing data file."
+    )
     return parser.parse_args(argv)
 
 
@@ -528,6 +566,20 @@ def resolve_settings(args: argparse.Namespace) -> typing.Dict[str, typing.Any]:
         sys.exit(1)
     path = base_path / mode
     path.mkdir(parents=True, exist_ok=True)
+
+    skip_fetch = pick(args.skip_fetch, "skip_fetch", False)
+    if skip_fetch:
+        return {
+            "cookies": None,
+            "ct0": None,
+            "download": True,
+            "path": path,
+            "mode": mode,
+            "query_id": None,
+            "4k": request_4k,
+            "concurrency": concurrency,
+            "skip_fetch": True,
+        }
 
     ct0 = pick(args.ct0, "ct0")
     if not ct0:
@@ -574,6 +626,7 @@ def resolve_settings(args: argparse.Namespace) -> typing.Dict[str, typing.Any]:
         "path": path,
         "mode": mode,
         "query_id": query_id,
+        "skip_fetch": False,
     }
 
 
@@ -584,27 +637,34 @@ async def main() -> None:
 
     logger.info(f"Mode: {settings['mode']} | Output: {settings['path']}")
 
-    progress = tqdm(desc="Fetching images", unit="")
-    posts = await collect_posts(
-        settings["cookies"],
-        settings["ct0"],
-        mode=settings["mode"],
-        query_id=settings["query_id"],
-        progress=progress,
-    )
-    progress.close()
+    if settings["skip_fetch"]:
+        try:
+            posts = load_posts(settings["path"])
+        except ConfigError as e:
+            logger.error(str(e))
+            sys.exit(1)
+    else:
+        progress = tqdm(desc="Fetching images", unit="")
+        posts = await collect_posts(
+            settings["cookies"],
+            settings["ct0"],
+            mode=settings["mode"],
+            query_id=settings["query_id"],
+            progress=progress,
+        )
+        progress.close()
 
-    before = len(posts)
-    posts = dedupe_posts(posts)
-    if removed := before - len(posts):
-        logger.info(f"Removed {removed} duplicate posts")
+        before = len(posts)
+        posts = dedupe_posts(posts)
+        if removed := before - len(posts):
+            logger.info(f"Removed {removed} duplicate posts")
 
-    if settings["4k"]:
-        logger.info("Requesting 4K image versions")
-        for post in posts:
-            post["images"] = [to_4k_url(url) for url in post["images"]]
+        if settings["4k"]:
+            logger.info("Requesting 4K image versions")
+            for post in posts:
+                post["images"] = [to_4k_url(url) for url in post["images"]]
 
-    save_to_file(posts, settings["path"])
+        save_to_file(posts, settings["path"])
 
     if settings["download"]:
         await download_images(posts, settings["path"], concurrency=settings["concurrency"])

@@ -3,12 +3,14 @@
 import asyncio
 import functools
 import http.server
+import json
 import pathlib
 import sys
 import tempfile
 import threading
 import time
 import unittest
+from unittest import mock
 
 sys.path.insert(0, str(pathlib.Path(__file__).parent.parent / "src"))
 
@@ -182,6 +184,112 @@ class DownloadImagesTest(unittest.TestCase):
         for name, content in contents.items():
             self.assertEqual((self.out_path / name).read_bytes(), content)
         self.assertEqual(TrackingHandler.max_in_flight, 1)
+
+
+class LoadPostsTest(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.dir = pathlib.Path(self.tmp.name)
+
+    def write_data(self, content):
+        self.dir.joinpath("data.json").write_text(content, encoding="utf-8")
+
+    def test_loads_posts_from_data_file(self):
+        posts = [{"author": "Alice", "images": ["https://pbs.twimg.com/media/a.jpg"], "videos": []}]
+        self.write_data(json.dumps(posts))
+
+        self.assertEqual(main.load_posts(self.dir), posts)
+
+    def test_missing_data_file_errors(self):
+        with self.assertRaises(main.ConfigError) as ctx:
+            main.load_posts(self.dir)
+
+        self.assertIn("Run a normal fetch first", str(ctx.exception))
+
+    def test_invalid_json_errors(self):
+        self.write_data("{not json")
+
+        with self.assertRaises(main.ConfigError) as ctx:
+            main.load_posts(self.dir)
+
+        self.assertIn("invalid JSON", str(ctx.exception))
+
+    def test_old_format_data_file_errors(self):
+        self.write_data(json.dumps(["https://pbs.twimg.com/media/a.jpg"]))
+
+        with self.assertRaises(main.ConfigError) as ctx:
+            main.load_posts(self.dir)
+
+        self.assertIn("unexpected format", str(ctx.exception))
+
+    def test_non_list_data_file_errors(self):
+        self.write_data(json.dumps({"posts": []}))
+
+        with self.assertRaises(main.ConfigError) as ctx:
+            main.load_posts(self.dir)
+
+        self.assertIn("unexpected format", str(ctx.exception))
+
+
+class SkipFetchEndToEndTest(unittest.TestCase):
+    """Run main() in skip-fetch mode against a real local server (no mocks)."""
+
+    def test_downloads_from_existing_data_file_without_api(self):
+        with tempfile.TemporaryDirectory() as serve_dir, \
+                tempfile.TemporaryDirectory() as out_dir, \
+                tempfile.TemporaryDirectory() as config_dir:
+            serve_path = pathlib.Path(serve_dir)
+            out_path = pathlib.Path(out_dir)
+            content_a = b"bytes-a"
+            (serve_path / "a.jpg").write_bytes(content_a)
+            (serve_path / "b.jpg").write_bytes(b"server-version-b")
+
+            handler = functools.partial(QuietHandler, directory=serve_dir)
+            server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), handler)
+            thread = threading.Thread(target=server.serve_forever, daemon=True)
+            thread.start()
+            self.addCleanup(server.shutdown)
+            port = server.server_address[1]
+
+            likes_dir = out_path / "likes"
+            likes_dir.mkdir()
+            (likes_dir / "b.jpg").write_bytes(b"already-downloaded")
+            posts = [
+                {
+                    "author": "Alice", "handle": "alice",
+                    "date": "2026-07-30T13:26:30+00:00", "text": "hi",
+                    "post_url": "https://x.com/alice/status/100",
+                    "images": [f"http://127.0.0.1:{port}/a.jpg"],
+                    "videos": [],
+                },
+                {
+                    "author": "Bob", "handle": "bob",
+                    "date": "2026-07-30T13:26:30+00:00", "text": "hey",
+                    "post_url": "https://x.com/bob/status/200",
+                    "images": [f"http://127.0.0.1:{port}/b.jpg"],
+                    "videos": [],
+                },
+            ]
+            (likes_dir / "data.json").write_text(json.dumps(posts), encoding="utf-8")
+
+            # No credentials: skip-fetch mode must not require them.
+            config_path = pathlib.Path(config_dir) / "config.json"
+            config_path.write_text(json.dumps({
+                "skip_fetch": True,
+                "path": str(out_path),
+            }), encoding="utf-8")
+
+            QuietHandler.requests = []
+            with mock.patch.object(
+                sys, "argv", ["x-liked-photos-export", "--config", str(config_path)]
+            ):
+                asyncio.run(main.main())
+
+            self.assertEqual((likes_dir / "a.jpg").read_bytes(), content_a)
+            # The already-downloaded file is skipped (resume still applies).
+            self.assertEqual((likes_dir / "b.jpg").read_bytes(), b"already-downloaded")
+            self.assertEqual(QuietHandler.requests, ["/a.jpg"])
 
 
 if __name__ == "__main__":

@@ -5,6 +5,7 @@
   "download": false,
   "4k": false,
   "concurrency": 4,
+  "skip_fetch": false,
   "mode": "likes",
   "path": ".",
   "likes_query_id": "paste-likes-query-id-here",
