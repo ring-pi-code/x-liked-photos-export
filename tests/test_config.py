@@ -240,24 +240,28 @@ class ResolveSettingsTest(unittest.TestCase):
 class MainIntegrationTest(unittest.TestCase):
     """Verify main() uses the config-driven settings end-to-end (network mocked)."""
 
-    def test_main_uses_config_file_settings(self):
+    def test_main_writes_post_details_to_data_file(self):
         with tempfile.TemporaryDirectory() as tmp:
             out = pathlib.Path(tmp) / "out"
             out.mkdir()
             write_config(tmp, {**VALID_CONFIG, "path": str(out)})
 
-            fake_images = [
-                "https://pbs.twimg.com/media/a.jpg",
-                "https://pbs.twimg.com/media/b.jpg",
-                "https://pbs.twimg.com/media/a.jpg",  # duplicate, as X returns each photo twice
-            ]
+            post = {
+                "author": "Alice",
+                "handle": "alice",
+                "date": "2026-07-30T13:26:30+00:00",
+                "text": "hello world",
+                "post_url": "https://x.com/alice/status/100",
+                "images": ["https://pbs.twimg.com/media/a.jpg"],
+            }
+            fake_posts = [post, dict(post)]  # duplicate, as pagination can repeat a post
             mock_progress = mock.MagicMock()
 
             with chdir(tmp), \
                     mock.patch.object(sys, "argv", ["x-liked-photos-export"]), \
                     mock.patch.object(main, "tqdm", return_value=mock_progress), \
-                    mock.patch.object(main, "collect_images_urls",
-                                      new=mock.AsyncMock(return_value=fake_images)) as fetch:
+                    mock.patch.object(main, "collect_posts",
+                                      new=mock.AsyncMock(return_value=fake_posts)) as fetch:
                 import asyncio
                 asyncio.run(main.main())
 
@@ -270,10 +274,7 @@ class MainIntegrationTest(unittest.TestCase):
 
             data_file = out / "likes" / "data.json"
             self.assertTrue(data_file.is_file())
-            self.assertEqual(json.loads(data_file.read_text()), [
-                "https://pbs.twimg.com/media/a.jpg",
-                "https://pbs.twimg.com/media/b.jpg",
-            ])
+            self.assertEqual(json.loads(data_file.read_text()), [post])
 
 
 if __name__ == "__main__":

@@ -53,7 +53,22 @@ Copy `config.example.json` to `config.json` and fill in your values:
 python src/main.py
 ```
 
-This fetches all posts you liked and generates `likes/data.json` with links to the photos.
+This fetches all posts you liked and generates `likes/data.json`. Each entry holds one post's details along with its photo links:
+
+```json
+[
+    {
+        "author": "Jane Doe",
+        "handle": "janedoe",
+        "date": "2026-07-30T13:26:30+00:00",
+        "text": "Post text here",
+        "post_url": "https://x.com/janedoe/status/2082820130049065448",
+        "images": [
+            "https://pbs.twimg.com/media/HOep3W1a8AAXHjm.jpg"
+        ]
+    }
+]
+```
 
 To export your bookmarks instead:
 

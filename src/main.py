@@ -7,6 +7,7 @@ import json
 import yarl
 import os
 import pathlib
+from datetime import datetime
 
 import aiohttp
 from tqdm.auto import tqdm
@@ -173,28 +174,74 @@ def get_query(
     return query
 
 
-def find_values_by_key(data: typing.Dict[str, typing.Any], target_key: str) -> typing.List[str]:
-    """Recursively searches through a dictionary and returns an array of all values 
-    associated with the specified key.
+def format_created_at(created_at: str) -> str:
+    """Convert X's created_at date to ISO 8601.
 
-    :param data: The dictionary to search through.
-    :param target_key: The key to search for.
-    :return: A list of values associated with the specified key.
+    :param created_at: The date as returned by X, e.g. "Thu Jul 30 13:26:30 +0000 2026".
+    :return: The date in ISO 8601, or the original value if it cannot be parsed.
     """
-    results: typing.Sequence[str] = []
+    try:
+        return datetime.strptime(created_at, "%a %b %d %H:%M:%S %z %Y").isoformat()
+    except ValueError:
+        return created_at
+
+
+def parse_tweet(result: typing.Dict[str, typing.Any]) -> typing.Dict[str, typing.Any] | None:
+    """Extract post details from a single tweet result.
+
+    :param result: The tweet result from a "tweet_results" entry.
+    :return: The post details, or None if the tweet has no images.
+    """
+    if not isinstance(result, dict):
+        return None
+    if result.get("__typename") == "TweetWithVisibilityResults":
+        result = result.get("tweet") or {}
+
+    legacy = result.get("legacy") or {}
+    media = (legacy.get("extended_entities") or {}).get("media") or []
+    images = [m["media_url_https"] for m in media if m.get("media_url_https")]
+    if not images:
+        return None
+
+    user_result = (result.get("core") or {}).get("user_results") or {}
+    user_core = (user_result.get("result") or {}).get("core") or {}
+    handle = user_core.get("screen_name", "")
+    rest_id = result.get("rest_id", "")
+
+    return {
+        "author": user_core.get("name", ""),
+        "handle": handle,
+        "date": format_created_at(legacy.get("created_at", "")),
+        "text": legacy.get("full_text", ""),
+        "post_url": f"https://x.com/{handle}/status/{rest_id}" if handle and rest_id else "",
+        "images": images,
+    }
+
+
+def parse_posts(data: typing.Dict[str, typing.Any]) -> typing.List[typing.Dict[str, typing.Any]]:
+    """Extract posts with images from a GraphQL response.
+
+    :param data: The GraphQL response data.
+    :return: The posts with their details and image URLs,
+        in the order they appear in the response.
+    """
+    posts: typing.List[typing.Dict[str, typing.Any]] = []
 
     def search(d: typing.Dict[str, typing.Any] | typing.Sequence[typing.Any]) -> None:
         if isinstance(d, dict):
-            for key, value in d.items():
-                if key == target_key:
-                    results.append(value)
+            if "tweet_results" in d:
+                post = parse_tweet((d["tweet_results"] or {}).get("result"))
+                if post:
+                    posts.append(post)
+                return
+            for value in d.values():
                 search(value)
         elif isinstance(d, list):
             for item in d:
                 search(item)
 
     search(data)
-    return results
+    return posts
 
 
 def get_bottom_cursor(data: typing.Dict[str, typing.Any]) -> str | None:
@@ -219,7 +266,7 @@ def get_bottom_cursor(data: typing.Dict[str, typing.Any]) -> str | None:
     return search(data)
 
 
-async def collect_images_urls(
+async def collect_posts(
     cookies: typing.Mapping[str, str],
     ct0: str,
     *,
@@ -227,14 +274,16 @@ async def collect_images_urls(
     query_id: str,
     cursor: str | None = None,
     progress: tqdm,  # type: ignore[reportUnknownParameterType]
-) -> typing.List[str]:
-    """Collect images URLs.
-    
+) -> typing.List[typing.Dict[str, typing.Any]]:
+    """Collect posts with images.
+
     :param cookies: The cookies to use.
     :param ct0: The CSRF token (same value as the 'x-csrf-token' header).
     :param mode: The export mode ('likes' or 'bookmarks').
     :param query_id: The GraphQL query ID for the mode's endpoint.
-    :return: The images URLs.
+    :param cursor: The pagination cursor, if any.
+    :param progress: The progress bar, updated with the number of images found.
+    :return: The posts with their details and image URLs.
     """
     mode_config = MODES[mode]
     twid = cookies.get("twid", "")
@@ -254,40 +303,42 @@ async def collect_images_urls(
             sys.exit(1)
 
         data = await response.json()
-        images = find_values_by_key(data, "media_url_https")
+        posts = parse_posts(data)
+        image_count = sum(len(post["images"]) for post in posts)
 
-        progress.update(len(images))
+        progress.update(image_count)
 
-        if (cursor := get_bottom_cursor(data)) and len(images) != 0:
-            more_images = await collect_images_urls(
+        if (cursor := get_bottom_cursor(data)) and image_count != 0:
+            more_posts = await collect_posts(
                 cookies, ct0, mode=mode, query_id=query_id, cursor=cursor, progress=progress
             )
-            images = images + more_images
+            posts = posts + more_posts
 
-        return images
+        return posts
 
 
-def save_to_file(images: typing.List[str], path: pathlib.Path) -> None:
-    """Save images urls to a file.
-    
-    :param data: The data to save.
+def save_to_file(posts: typing.List[typing.Dict[str, typing.Any]], path: pathlib.Path) -> None:
+    """Save posts to a file.
+
+    :param posts: The posts to save.
     :param path: The path to save the data to.
     """
     with open(path / "data.json", "w") as f:
-        json.dump(images, f, indent=4)
+        json.dump(posts, f, indent=4)
 
 
-async def download_images(images: typing.List[str], path: pathlib.Path) -> None:
+async def download_images(posts: typing.List[typing.Dict[str, typing.Any]], path: pathlib.Path) -> None:
     """Download images.
-    
-    :param images: The images to download.
+
+    :param posts: The posts whose images to download.
     :param path: The path to download the images to.
     """
+    urls = [url for post in posts for url in post["images"]]
     async with aiohttp.ClientSession() as session:
-        for image in tqdm(images, desc="Downloading images", unit=""):
-            async with session.get(image) as response:
+        for url in tqdm(urls, desc="Downloading images", unit=""):
+            async with session.get(url) as response:
                 data = await response.read()
-                with open(path / pathlib.Path(image).name, "wb") as f:
+                with open(path / pathlib.Path(url).name, "wb") as f:
                     f.write(data)
 
 
@@ -434,7 +485,7 @@ async def main() -> None:
     logger.info(f"Mode: {settings['mode']} | Output: {settings['path']}")
 
     progress = tqdm(desc="Fetching images", unit="")
-    images = await collect_images_urls(
+    posts = await collect_posts(
         settings["cookies"],
         settings["ct0"],
         mode=settings["mode"],
@@ -443,15 +494,15 @@ async def main() -> None:
     )
     progress.close()
 
-    before = len(images)
-    images = list(dict.fromkeys(images))
-    if removed := before - len(images):
-        logger.info(f"Removed {removed} duplicate URLs")
+    before = len(posts)
+    posts = list({post["post_url"] or post["images"][0]: post for post in posts}.values())
+    if removed := before - len(posts):
+        logger.info(f"Removed {removed} duplicate posts")
 
-    save_to_file(images, settings["path"])
+    save_to_file(posts, settings["path"])
 
     if settings["download"]:
-        await download_images(images, settings["path"])
+        await download_images(posts, settings["path"])
 
     logger.info("Report success")
 
