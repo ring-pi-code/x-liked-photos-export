@@ -119,6 +119,20 @@ The server only serves image files, and only from folders you have loaded in the
 
 Open `/timeline.html` (linked from the slideshow control bar) for an X-style feed of your posts, newest first. It uses only local data: post details come from `data.json`, images from your downloads. Sort by date, or filter with the From/To date inputs (before, after, or between dates). More posts load as you scroll. Images that were not downloaded and videos show a placeholder, and every post links to the original on X.
 
+## Double-click launchers
+
+To run the tools without the command line, generate clickable launchers once per machine:
+
+```bash
+python src/install_launchers.py
+```
+This creates two launchers in `launch/` in the format your OS can double-click (`.desktop` on Linux, `.command` on macOS, `.bat` on Windows):
+
+- **X Export** — runs the export exactly as `python src/main.py` would, reading `config.json` from the repo. The window waits for a keypress at the end.
+- **X Slideshow** — starts the slideshow server and opens it in your browser. Close the window to stop the server.
+
+The launchers are machine-specific, so they are gitignored. Re-run the installer if you move the repository.
+
 ## Cookies
 
 The tool needs two or three cookies from your browser to call the X API on your behalf. To get them:

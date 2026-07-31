@@ -15,6 +15,7 @@ import pathlib
 import sys
 import typing
 import urllib.parse
+import webbrowser
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 import yarl
@@ -358,7 +359,22 @@ def parse_args(argv: typing.Sequence[str] | None = None) -> argparse.Namespace:
         help=f"Path to a JSON config file, used to resolve the default folder. "
              f"Defaults to '{exporter.DEFAULT_CONFIG_FILENAME}' in the current directory."
     )
+    parser.add_argument(
+        "--open-browser",
+        action="store_true",
+        help="Open the slideshow in your default browser once the server starts."
+    )
     return parser.parse_args(argv)
+
+
+def browser_url(host: str, port: int) -> str:
+    """URL for opening the slideshow in a browser.
+
+    Wildcard bind hosts (0.0.0.0, ::) become localhost, since a browser
+    cannot open a wildcard address.
+    """
+    display = "127.0.0.1" if host in ("0.0.0.0", "::") else host
+    return f"http://{display}:{port}"
 
 
 def main() -> None:
@@ -370,6 +386,11 @@ def main() -> None:
     print(f"Starting slideshow server on http://{args.host}:{args.port}")
     print(f"Default folder: {folder}")
     print("Press Ctrl+C to stop")
+    if args.open_browser:
+        try:
+            webbrowser.open(browser_url(args.host, args.port))
+        except webbrowser.Error as e:
+            print(f"Could not open a browser: {e}")
     try:
         server.serve_forever()
     except KeyboardInterrupt:

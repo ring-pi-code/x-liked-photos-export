@@ -10,6 +10,7 @@ import threading
 import unittest
 import urllib.error
 import urllib.request
+from unittest import mock
 
 sys.path.insert(0, str(pathlib.Path(__file__).parent.parent / "src"))
 
@@ -250,6 +251,26 @@ class DefaultFolderTest(unittest.TestCase):
         folder = slideshow.default_folder(self.dir / "missing.json")
 
         self.assertEqual(folder, pathlib.Path("likes"))
+
+
+class OpenBrowserTest(unittest.TestCase):
+    def test_browser_url_maps_wildcard_host_to_localhost(self):
+        self.assertEqual(slideshow.browser_url("0.0.0.0", 8765), "http://127.0.0.1:8765")
+        self.assertEqual(slideshow.browser_url("127.0.0.1", 8765), "http://127.0.0.1:8765")
+
+    def test_open_browser_flag_opens_browser(self):
+        with tempfile.TemporaryDirectory() as tmp, \
+                mock.patch.object(sys, "argv",
+                                  ["slideshow", "--port", "0", "--open-browser",
+                                   "--folder", tmp]), \
+                mock.patch.object(slideshow.ThreadingHTTPServer, "serve_forever",
+                                  return_value=None), \
+                mock.patch.object(slideshow.webbrowser, "open") as open_browser:
+            slideshow.main()
+
+        open_browser.assert_called_once()
+        url = open_browser.call_args.args[0]
+        self.assertTrue(url.startswith("http://127.0.0.1:"), url)
 
 
 if __name__ == "__main__":
