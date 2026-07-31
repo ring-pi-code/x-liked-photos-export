@@ -18,7 +18,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 import main as exporter
 
-PUBLIC_DIR = pathlib.Path(__file__).parent / "public"
+PUBLIC_DIR = (pathlib.Path(__file__).parent / "public").resolve()
 """Directory containing the web UI static files."""
 
 IMAGE_MIME_TYPES = {
@@ -124,8 +124,8 @@ class Handler(BaseHTTPRequestHandler):
         # Static files
         if path == "/":
             path = "/index.html"
-        file_path = PUBLIC_DIR / path.lstrip("/")
-        if file_path.is_file():
+        file_path = (PUBLIC_DIR / path.lstrip("/")).resolve()
+        if file_path.is_file() and file_path.is_relative_to(PUBLIC_DIR):
             self.send_file(file_path, STATIC_MIME_TYPES)
             return
 

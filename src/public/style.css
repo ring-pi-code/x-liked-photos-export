@@ -1,15 +1,10 @@
-* {
-    box-sizing: border-box;
-}
+/* Pi Slideshow — slideshow-specific styles only.
+   Base element styling and light/dark theming come from Oat
+   (vendor/oat.min.css), which follows the system theme. */
 
 html, body {
-    margin: 0;
-    padding: 0;
     height: 100%;
     width: 100%;
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, sans-serif;
-    background: #0b0b0b;
-    color: #e0e0e0;
     overflow: hidden;
 }
 
@@ -18,7 +13,6 @@ body {
     grid-template-rows: auto minmax(0, 1fr);
     height: 100vh;
     max-height: 100vh;
-    overflow: hidden;
 }
 
 .controls {
@@ -27,8 +21,8 @@ body {
     align-items: center;
     gap: 10px 14px;
     padding: 10px 14px;
-    background: #181818;
-    border-bottom: 1px solid #2c2c2c;
+    background: var(--faint);
+    border-bottom: 1px solid var(--border);
     z-index: 100;
 }
 
@@ -45,7 +39,7 @@ body.hide-ui .controls {
 .control-group label {
     font-size: 11px;
     font-weight: 600;
-    color: #888;
+    color: var(--muted-foreground);
     text-transform: uppercase;
     letter-spacing: 0.5px;
     white-space: nowrap;
@@ -53,70 +47,31 @@ body.hide-ui .controls {
 
 .controls input[type="text"] {
     width: 260px;
-    padding: 6px 8px;
-    border: 1px solid #3a3a3a;
-    background: #222;
-    color: #eee;
-    border-radius: 4px;
-    font-size: 13px;
 }
 
 .controls input[type="number"] {
-    width: 64px;
-    padding: 6px 8px;
-    border: 1px solid #3a3a3a;
-    background: #222;
-    color: #eee;
-    border-radius: 4px;
-    font-size: 13px;
+    width: 80px;
 }
 
 .controls button {
-    padding: 6px 10px;
-    border: 1px solid #3a3a3a;
-    background: #252525;
-    color: #ddd;
-    border-radius: 4px;
-    cursor: pointer;
-    font-size: 13px;
-    transition: background 0.15s, border-color 0.15s;
     white-space: nowrap;
-}
-
-.controls button:hover {
-    background: #333;
-    border-color: #555;
-}
-
-.controls button:active {
-    background: #3a3a3a;
 }
 
 .controls button.active,
 .controls button.toggle.active {
-    background: #3a7bd5;
-    border-color: #3a7bd5;
-    color: #fff;
-}
-
-.playback-controls button {
-    padding: 7px 12px;
-    font-weight: 500;
-}
-
-.layout-controls button {
-    min-width: 32px;
-    padding: 6px 8px;
-    font-weight: 600;
+    background: var(--primary);
+    border-color: var(--primary);
+    color: var(--primary-foreground);
 }
 
 .status {
     margin-left: auto;
     font-size: 13px;
-    color: #999;
+    color: var(--muted-foreground);
     white-space: nowrap;
 }
 
+/* The stage stays black in both themes: photos look best on black. */
 .stage {
     display: grid;
     gap: 6px;
@@ -160,6 +115,7 @@ body.hide-ui .controls {
     grid-template-rows: minmax(0, 1fr) minmax(0, 1fr);
 }
 
+/* Shown when the UI is hidden; colors are fixed because it overlays photos. */
 .hover-hint {
     position: fixed;
     top: 0;

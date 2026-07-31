@@ -1,5 +1,6 @@
 """Tests for the slideshow server, end to end over real HTTP."""
 
+import http.client
 import json
 import pathlib
 import sys
@@ -98,6 +99,24 @@ class SlideshowServerTest(unittest.TestCase):
 
         self.assertEqual(status, 200)
         self.assertIn(b"slideshow", body.lower())
+
+    def test_vendored_oat_css_is_served(self):
+        status, body, headers = get(f"{self.base}/vendor/oat.min.css")
+
+        self.assertEqual(status, 200)
+        self.assertEqual(headers["Content-Type"], "text/css")
+        self.assertIn(b"@layer", body)
+
+    def test_static_path_traversal_is_rejected(self):
+        # Raw "../" must not escape the public directory. http.client sends
+        # the path verbatim, unlike urllib/curl which normalize it away.
+        conn = http.client.HTTPConnection("127.0.0.1", self.server.server_address[1])
+        conn.request("GET", "/../slideshow.py")
+        res = conn.getresponse()
+        res.read()
+        conn.close()
+
+        self.assertEqual(res.status, 404)
 
 
 class DefaultFolderTest(unittest.TestCase):
