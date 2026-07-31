@@ -381,16 +381,25 @@ def save_to_file(posts: typing.List[typing.Dict[str, typing.Any]], path: pathlib
 async def download_images(posts: typing.List[typing.Dict[str, typing.Any]], path: pathlib.Path) -> None:
     """Download images.
 
+    Images that already exist are skipped, so an interrupted run can be
+    resumed by running the tool again. Each image is written to a ".part"
+    file and renamed once complete, so a crash never leaves a partial
+    image behind under its final name.
+
     :param posts: The posts whose images to download.
     :param path: The path to download the images to.
     """
     urls = [url for post in posts for url in post["images"]]
     async with aiohttp.ClientSession() as session:
         for url in tqdm(urls, desc="Downloading images", unit=""):
+            target = path / yarl.URL(url).name
+            if target.exists():
+                continue
+            partial = target.with_name(target.name + ".part")
             async with session.get(url) as response:
                 data = await response.read()
-                with open(path / yarl.URL(url).name, "wb") as f:
-                    f.write(data)
+                partial.write_bytes(data)
+            partial.rename(target)
 
 
 def parse_args(argv: typing.Sequence[str] | None = None) -> argparse.Namespace:
