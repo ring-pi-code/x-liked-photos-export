@@ -187,11 +187,24 @@ def format_created_at(created_at: str) -> str:
         return created_at
 
 
+def best_video_url(media: typing.Dict[str, typing.Any]) -> str | None:
+    """Pick the highest-bitrate MP4 variant of a video media.
+
+    :param media: The media entry from a tweet's extended_entities.
+    :return: The MP4 URL, or None if the media has no video variants.
+    """
+    variants = (media.get("video_info") or {}).get("variants") or []
+    mp4s = [v for v in variants if v.get("content_type") == "video/mp4" and v.get("url")]
+    if not mp4s:
+        return None
+    return max(mp4s, key=lambda v: v.get("bitrate") or 0)["url"]
+
+
 def parse_tweet(result: typing.Dict[str, typing.Any]) -> typing.Dict[str, typing.Any] | None:
     """Extract post details from a single tweet result.
 
     :param result: The tweet result from a "tweet_results" entry.
-    :return: The post details, or None if the tweet has no images.
+    :return: The post details, or None if the tweet has no images and no videos.
     """
     if not isinstance(result, dict):
         return None
@@ -200,8 +213,10 @@ def parse_tweet(result: typing.Dict[str, typing.Any]) -> typing.Dict[str, typing
 
     legacy = result.get("legacy") or {}
     media = (legacy.get("extended_entities") or {}).get("media") or []
-    images = [m["media_url_https"] for m in media if m.get("media_url_https")]
-    if not images:
+    images = [m["media_url_https"] for m in media
+              if m.get("type") == "photo" and m.get("media_url_https")]
+    videos = [url for m in media if (url := best_video_url(m))]
+    if not images and not videos:
         return None
 
     user_result = (result.get("core") or {}).get("user_results") or {}
@@ -216,6 +231,7 @@ def parse_tweet(result: typing.Dict[str, typing.Any]) -> typing.Dict[str, typing
         "text": legacy.get("full_text", ""),
         "post_url": f"https://x.com/{handle}/status/{rest_id}" if handle and rest_id else "",
         "images": images,
+        "videos": videos,
     }
 
 
@@ -305,17 +321,34 @@ async def collect_posts(
 
         data = await response.json()
         posts = parse_posts(data)
-        image_count = sum(len(post["images"]) for post in posts)
+        media_count = sum(len(post["images"]) + len(post["videos"]) for post in posts)
 
-        progress.update(image_count)
+        progress.update(media_count)
 
-        if (cursor := get_bottom_cursor(data)) and image_count != 0:
+        if (cursor := get_bottom_cursor(data)) and media_count != 0:
             more_posts = await collect_posts(
                 cookies, ct0, mode=mode, query_id=query_id, cursor=cursor, progress=progress
             )
             posts = posts + more_posts
 
         return posts
+
+
+def dedupe_posts(
+    posts: typing.List[typing.Dict[str, typing.Any]],
+) -> typing.List[typing.Dict[str, typing.Any]]:
+    """Remove duplicate posts, keeping the first occurrence of each.
+
+    Posts are identified by their post URL, or by their first media URL
+    when the post URL is missing.
+
+    :param posts: The posts to deduplicate.
+    :return: The deduplicated posts, in their original order.
+    """
+    unique: typing.Dict[str, typing.Dict[str, typing.Any]] = {}
+    for post in posts:
+        unique.setdefault(post["post_url"] or (post["images"] + post["videos"])[0], post)
+    return list(unique.values())
 
 
 def to_4k_url(url: str) -> str:
@@ -522,7 +555,7 @@ async def main() -> None:
     progress.close()
 
     before = len(posts)
-    posts = list({post["post_url"] or post["images"][0]: post for post in posts}.values())
+    posts = dedupe_posts(posts)
     if removed := before - len(posts):
         logger.info(f"Removed {removed} duplicate posts")
 

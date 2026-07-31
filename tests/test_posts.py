@@ -14,6 +14,38 @@ sys.path.insert(0, str(pathlib.Path(__file__).parent.parent / "src"))
 import main  # noqa: E402
 
 
+def video_media(index=1):
+    """Build a video media entry with an HLS playlist and two MP4 variants."""
+    base = f"https://video.twimg.com/amplify_video/{index}"
+    return {
+        "type": "video",
+        "media_url_https": f"https://pbs.twimg.com/amplify_video_thumb/{index}/img/x.jpg",
+        "video_info": {
+            "variants": [
+                {"content_type": "application/x-mpegURL", "url": f"{base}/pl/x.m3u8?tag=29"},
+                {"bitrate": 632000, "content_type": "video/mp4",
+                 "url": f"{base}/vid/avc1/320x452/a.mp4?tag=29"},
+                {"bitrate": 2176000, "content_type": "video/mp4",
+                 "url": f"{base}/vid/avc1/720x1016/b.mp4?tag=29"},
+            ],
+        },
+    }
+
+
+def gif_media():
+    """Build an animated GIF media entry (single MP4 variant)."""
+    return {
+        "type": "animated_gif",
+        "media_url_https": "https://pbs.twimg.com/tweet_video_thumb/g.jpg",
+        "video_info": {
+            "variants": [
+                {"bitrate": 0, "content_type": "video/mp4",
+                 "url": "https://video.twimg.com/tweet_video/g.mp4"},
+            ],
+        },
+    }
+
+
 def make_tweet(
     *,
     rest_id="100",
@@ -22,6 +54,7 @@ def make_tweet(
     created_at="Thu Jul 30 13:26:30 +0000 2026",
     full_text="hello world",
     images=("https://pbs.twimg.com/media/a.jpg",),
+    extra_media=(),
     wrapped=False,
 ):
     """Build one timeline entry with the real response shape."""
@@ -40,7 +73,8 @@ def make_tweet(
             "full_text": full_text,
             "extended_entities": {
                 "media": [
-                    {"type": "photo", "media_url_https": url} for url in images
+                    *({"type": "photo", "media_url_https": url} for url in images),
+                    *extra_media,
                 ],
             },
         },
@@ -94,6 +128,7 @@ class ParsePostsTest(unittest.TestCase):
             "text": "hello world",
             "post_url": "https://x.com/alice/status/100",
             "images": ["https://pbs.twimg.com/media/a.jpg"],
+            "videos": [],
         }])
 
     def test_multi_image_post_yields_one_entry_with_all_images(self):
@@ -144,6 +179,46 @@ class ParsePostsTest(unittest.TestCase):
             "https://x.com/alice/status/100",
             "https://x.com/bob/status/200",
         ])
+
+    def test_video_post_yields_highest_bitrate_mp4(self):
+        data = make_response(make_tweet(images=(), extra_media=[video_media()]))
+
+        posts = main.parse_posts(data)
+
+        self.assertEqual(len(posts), 1)
+        self.assertEqual(posts[0]["images"], [])
+        self.assertEqual(posts[0]["videos"],
+                         ["https://video.twimg.com/amplify_video/1/vid/avc1/720x1016/b.mp4?tag=29"])
+
+    def test_gif_is_treated_as_video(self):
+        data = make_response(make_tweet(images=(), extra_media=[gif_media()]))
+
+        posts = main.parse_posts(data)
+
+        self.assertEqual(posts[0]["images"], [])
+        self.assertEqual(posts[0]["videos"], ["https://video.twimg.com/tweet_video/g.mp4"])
+
+    def test_mixed_media_post_has_images_and_videos(self):
+        data = make_response(make_tweet(extra_media=[video_media()]))
+
+        posts = main.parse_posts(data)
+
+        self.assertEqual(posts[0]["images"], ["https://pbs.twimg.com/media/a.jpg"])
+        self.assertEqual(posts[0]["videos"],
+                         ["https://video.twimg.com/amplify_video/1/vid/avc1/720x1016/b.mp4?tag=29"])
+
+
+class DedupePostsTest(unittest.TestCase):
+    def test_duplicates_collapse_keeping_first(self):
+        post = {"post_url": "https://x.com/a/status/1", "images": ["i1"], "videos": []}
+        changed = {"post_url": "https://x.com/a/status/1", "images": ["i2"], "videos": []}
+
+        self.assertEqual(main.dedupe_posts([post, changed]), [post])
+
+    def test_post_without_url_dedupes_by_first_media(self):
+        post = {"post_url": "", "images": [], "videos": ["v1"]}
+
+        self.assertEqual(main.dedupe_posts([post, dict(post)]), [post])
 
 
 class To4kUrlTest(unittest.TestCase):

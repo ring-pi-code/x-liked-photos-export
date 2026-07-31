@@ -287,6 +287,7 @@ class MainIntegrationTest(unittest.TestCase):
                 "text": "hello world",
                 "post_url": "https://x.com/alice/status/100",
                 "images": ["https://pbs.twimg.com/media/a.jpg"],
+                "videos": [],
             }
             fake_posts = [post, dict(post)]  # duplicate, as pagination can repeat a post
             mock_progress = mock.MagicMock()
@@ -323,6 +324,7 @@ class MainIntegrationTest(unittest.TestCase):
                 "text": "hello world",
                 "post_url": "https://x.com/alice/status/100",
                 "images": ["https://pbs.twimg.com/media/a.jpg"],
+                "videos": [],
             }
             mock_progress = mock.MagicMock()
 

@@ -67,10 +67,13 @@ This fetches all posts you liked and generates `likes/data.json`. Each entry hol
         "post_url": "https://x.com/janedoe/status/2082820130049065448",
         "images": [
             "https://pbs.twimg.com/media/HOep3W1a8AAXHjm.jpg"
-        ]
+        ],
+        "videos": []
     }
 ]
 ```
+
+Video posts list the highest-quality MP4 under `videos` (GIFs count as videos). Video thumbnails are not included in `images`, and videos are not downloaded.
 
 To export your bookmarks instead:
 
