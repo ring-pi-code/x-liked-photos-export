@@ -7,6 +7,7 @@ import pathlib
 import sys
 import tempfile
 import threading
+import time
 import unittest
 
 sys.path.insert(0, str(pathlib.Path(__file__).parent.parent / "src"))
@@ -49,9 +50,32 @@ class TruncatingHandler(http.server.BaseHTTPRequestHandler):
         pass
 
 
+class TrackingHandler(QuietHandler):
+    """Serve files with a small delay, tracking simultaneous requests."""
+
+    delay = 0.05
+    in_flight = 0
+    max_in_flight = 0
+    lock = threading.Lock()
+
+    def do_GET(self):
+        cls = type(self)
+        with cls.lock:
+            cls.in_flight += 1
+            cls.max_in_flight = max(cls.max_in_flight, cls.in_flight)
+        try:
+            time.sleep(cls.delay)
+            super().do_GET()
+        finally:
+            with cls.lock:
+                cls.in_flight -= 1
+
+
 class DownloadImagesTest(unittest.TestCase):
     def setUp(self):
         QuietHandler.requests = []
+        TrackingHandler.in_flight = 0
+        TrackingHandler.max_in_flight = 0
         self.serve_dir = tempfile.TemporaryDirectory()
         self.out_dir = tempfile.TemporaryDirectory()
         self.addCleanup(self.serve_dir.cleanup)
@@ -65,9 +89,9 @@ class DownloadImagesTest(unittest.TestCase):
 
     def start_server(self, handler_cls=QuietHandler):
         handler = handler_cls
-        if handler_cls is QuietHandler:
-            handler = functools.partial(QuietHandler, directory=self.serve_dir.name)
-        server = http.server.HTTPServer(("127.0.0.1", 0), handler)
+        if issubclass(handler_cls, http.server.SimpleHTTPRequestHandler):
+            handler = functools.partial(handler_cls, directory=self.serve_dir.name)
+        server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), handler)
         thread = threading.Thread(target=server.serve_forever, daemon=True)
         thread.start()
         self.addCleanup(server.shutdown)
@@ -130,6 +154,34 @@ class DownloadImagesTest(unittest.TestCase):
         # leaves no trace. The missing final file makes the next run retry.
         self.assertFalse((self.out_path / "a.jpg").exists())
         self.assertFalse((self.out_path / "a.jpg.part").exists())
+
+    def test_downloads_in_parallel_when_concurrency_allows(self):
+        contents = {f"{c}.jpg": f"bytes-{c}".encode() for c in "abcdefgh"}
+        for name, content in contents.items():
+            self.serve_file(name, content)
+        port = self.start_server(TrackingHandler)
+
+        posts = [{"images": [f"http://127.0.0.1:{port}/{name}"]} for name in contents]
+
+        asyncio.run(main.download_images(posts, self.out_path, concurrency=4))
+
+        for name, content in contents.items():
+            self.assertEqual((self.out_path / name).read_bytes(), content)
+        self.assertGreaterEqual(TrackingHandler.max_in_flight, 2)
+
+    def test_downloads_sequentially_when_concurrency_is_1(self):
+        contents = {f"{c}.jpg": f"bytes-{c}".encode() for c in "abcd"}
+        for name, content in contents.items():
+            self.serve_file(name, content)
+        port = self.start_server(TrackingHandler)
+
+        posts = [{"images": [f"http://127.0.0.1:{port}/{name}"]} for name in contents]
+
+        asyncio.run(main.download_images(posts, self.out_path, concurrency=1))
+
+        for name, content in contents.items():
+            self.assertEqual((self.out_path / name).read_bytes(), content)
+        self.assertEqual(TrackingHandler.max_in_flight, 1)
 
 
 if __name__ == "__main__":

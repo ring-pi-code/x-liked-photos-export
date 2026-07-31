@@ -225,6 +225,42 @@ class ResolveSettingsTest(unittest.TestCase):
 
         self.assertIn("'4k' must be true or false", "".join(logs.output))
 
+    def test_concurrency_defaults_to_4(self):
+        write_config(self.dir, VALID_CONFIG)
+
+        with chdir(self.dir):
+            settings = self.resolve([])
+
+        self.assertEqual(settings["concurrency"], 4)
+
+    def test_concurrency_loaded_from_config(self):
+        write_config(self.dir, {**VALID_CONFIG, "concurrency": 8})
+
+        with chdir(self.dir):
+            settings = self.resolve([])
+
+        self.assertEqual(settings["concurrency"], 8)
+
+    def test_concurrency_cli_flag_overrides_config(self):
+        write_config(self.dir, {**VALID_CONFIG, "concurrency": 8})
+
+        with chdir(self.dir):
+            settings = self.resolve(["--concurrency", "2"])
+
+        self.assertEqual(settings["concurrency"], 2)
+
+    def test_invalid_concurrency_errors(self):
+        for bad in ("4", True, 3, 0):
+            with self.subTest(concurrency=bad):
+                write_config(self.dir, {**VALID_CONFIG, "concurrency": bad})
+
+                with chdir(self.dir), \
+                        self.assertRaises(SystemExit), \
+                        self.assertLogs(level=logging.ERROR) as logs:
+                    self.resolve([])
+
+                self.assertIn("'concurrency' must be one of", "".join(logs.output))
+
     def test_missing_ct0_errors(self):
         write_config(self.dir, {"auth_token": "a", "twid": "u=1"})
 
@@ -339,6 +375,39 @@ class MainIntegrationTest(unittest.TestCase):
             data = json.loads((out / "likes" / "data.json").read_text())
             self.assertEqual(data[0]["images"],
                              ["https://pbs.twimg.com/media/a.jpg?format=jpg&name=4096x4096"])
+
+    def test_main_passes_concurrency_to_download(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            out = pathlib.Path(tmp) / "out"
+            out.mkdir()
+            write_config(tmp, {**VALID_CONFIG, "path": str(out),
+                               "download": True, "concurrency": 8})
+
+            post = {
+                "author": "Alice",
+                "handle": "alice",
+                "date": "2026-07-30T13:26:30+00:00",
+                "text": "hello world",
+                "post_url": "https://x.com/alice/status/100",
+                "images": ["https://pbs.twimg.com/media/a.jpg"],
+                "videos": [],
+            }
+            mock_progress = mock.MagicMock()
+
+            with chdir(tmp), \
+                    mock.patch.object(sys, "argv", ["x-liked-photos-export"]), \
+                    mock.patch.object(main, "tqdm", return_value=mock_progress), \
+                    mock.patch.object(main, "collect_posts",
+                                      new=mock.AsyncMock(return_value=[post])), \
+                    mock.patch.object(main, "download_images",
+                                      new=mock.AsyncMock()) as download:
+                import asyncio
+                asyncio.run(main.main())
+
+            download.assert_awaited_once()
+            args, kwargs = download.call_args
+            self.assertEqual(args[0], [post])
+            self.assertEqual(kwargs["concurrency"], 8)
 
 
 if __name__ == "__main__":

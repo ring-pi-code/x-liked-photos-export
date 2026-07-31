@@ -28,6 +28,7 @@ Copy `config.example.json` to `config.json` and fill in your values:
   "twid": "",
   "download": false,
   "4k": false,
+  "concurrency": 4,
   "mode": "likes",
   "path": ".",
   "likes_query_id": "paste-likes-query-id-here",
@@ -42,6 +43,7 @@ Copy `config.example.json` to `config.json` and fill in your values:
 | `twid` | The `twid` cookie. Required in `likes` mode only (see [Cookies](#cookies)). |
 | `download` | Optional. Set to `true` to also download the photos. Defaults to `false`. |
 | `4k` | Optional. Set to `true` to request the 4K version of each image. X serves the original when no 4K version exists. Defaults to `false`. |
+| `concurrency` | Optional. How many images to download in parallel. One of `1`, `2`, `4`, `8`. Defaults to `4`. |
 | `mode` | Optional. `likes` or `bookmarks`. Defaults to `likes`. |
 | `path` | Optional. Output directory for `data.json` and downloaded images. Defaults to the current directory. |
 | `likes_query_id` / `bookmarks_query_id` | **Required.** The GraphQL query IDs for the Likes and Bookmarks endpoints (see [Query IDs](#query-ids)). |

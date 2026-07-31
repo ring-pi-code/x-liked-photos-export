@@ -4,6 +4,7 @@
   "twid": "",
   "download": false,
   "4k": false,
+  "concurrency": 4,
   "mode": "likes",
   "path": ".",
   "likes_query_id": "paste-likes-query-id-here",

@@ -103,9 +103,12 @@ DEFAULT_CONFIG_FILENAME = "config.json"
 
 CONFIG_KEYS = {
     "ct0", "auth_token", "twid", "download", "mode", "path", "4k",
-    "likes_query_id", "bookmarks_query_id",
+    "likes_query_id", "bookmarks_query_id", "concurrency",
 }
 """Keys allowed in the config file."""
+
+CONCURRENCY_CHOICES = (1, 2, 4, 8)
+"""Allowed values for the 'concurrency' setting."""
 
 
 class ConfigError(Exception):
@@ -140,6 +143,13 @@ def load_config(path: pathlib.Path) -> typing.Dict[str, typing.Any]:
     for key in ("download", "4k"):
         if key in config and not isinstance(config[key], bool):
             raise ConfigError(f"Config value '{key}' must be true or false, got: {config[key]!r}")
+    if "concurrency" in config:
+        value = config["concurrency"]
+        if isinstance(value, bool) or not isinstance(value, int) or value not in CONCURRENCY_CHOICES:
+            raise ConfigError(
+                f"Config value 'concurrency' must be one of: "
+                f"{', '.join(map(str, CONCURRENCY_CHOICES))}, got: {value!r}"
+            )
     for key in ("ct0", "auth_token", "twid", "mode", "path", "likes_query_id", "bookmarks_query_id"):
         if key in config and config[key] is not None and not isinstance(config[key], str):
             raise ConfigError(f"Config value '{key}' must be a string, got: {config[key]!r}")
@@ -378,7 +388,11 @@ def save_to_file(posts: typing.List[typing.Dict[str, typing.Any]], path: pathlib
         json.dump(posts, f, indent=4)
 
 
-async def download_images(posts: typing.List[typing.Dict[str, typing.Any]], path: pathlib.Path) -> None:
+async def download_images(
+    posts: typing.List[typing.Dict[str, typing.Any]],
+    path: pathlib.Path,
+    concurrency: int = 1,
+) -> None:
     """Download images.
 
     Images that already exist are skipped, so an interrupted run can be
@@ -388,18 +402,26 @@ async def download_images(posts: typing.List[typing.Dict[str, typing.Any]], path
 
     :param posts: The posts whose images to download.
     :param path: The path to download the images to.
+    :param concurrency: How many images to download in parallel.
     """
     urls = [url for post in posts for url in post["images"]]
-    async with aiohttp.ClientSession() as session:
-        for url in tqdm(urls, desc="Downloading images", unit=""):
+    semaphore = asyncio.Semaphore(concurrency)
+    progress = tqdm(total=len(urls), desc="Downloading images", unit="")
+
+    async def fetch(session: aiohttp.ClientSession, url: str) -> None:
+        async with semaphore:
             target = path / yarl.URL(url).name
-            if target.exists():
-                continue
-            partial = target.with_name(target.name + ".part")
-            async with session.get(url) as response:
-                data = await response.read()
-                partial.write_bytes(data)
-            partial.rename(target)
+            if not target.exists():
+                partial = target.with_name(target.name + ".part")
+                async with session.get(url) as response:
+                    data = await response.read()
+                    partial.write_bytes(data)
+                partial.rename(target)
+            progress.update()
+
+    async with aiohttp.ClientSession() as session:
+        await asyncio.gather(*(fetch(session, url) for url in urls))
+    progress.close()
 
 
 def parse_args(argv: typing.Sequence[str] | None = None) -> argparse.Namespace:
@@ -457,6 +479,12 @@ def parse_args(argv: typing.Sequence[str] | None = None) -> argparse.Namespace:
         default=None,
         help="Request 4K versions of images when available."
     )
+    parser.add_argument(
+        "--concurrency",
+        type=int,
+        choices=CONCURRENCY_CHOICES,
+        help="Number of images to download in parallel. Defaults to 4."
+    )
     return parser.parse_args(argv)
 
 
@@ -492,6 +520,7 @@ def resolve_settings(args: argparse.Namespace) -> typing.Dict[str, typing.Any]:
 
     download = pick(args.download, "download", False)
     request_4k = pick(args.request_4k, "4k", False)
+    concurrency = pick(args.concurrency, "concurrency", 4)
     base_path = pathlib.Path(pick(args.path, "path", os.curdir)).expanduser()
     if not base_path.is_dir():
         logger.error(f"The output path is not a directory: {base_path}")
@@ -540,6 +569,7 @@ def resolve_settings(args: argparse.Namespace) -> typing.Dict[str, typing.Any]:
         "ct0": ct0,
         "download": download,
         "4k": request_4k,
+        "concurrency": concurrency,
         "path": path,
         "mode": mode,
         "query_id": query_id,
@@ -576,7 +606,7 @@ async def main() -> None:
     save_to_file(posts, settings["path"])
 
     if settings["download"]:
-        await download_images(posts, settings["path"])
+        await download_images(posts, settings["path"], concurrency=settings["concurrency"])
 
     logger.info("Report success")
 
